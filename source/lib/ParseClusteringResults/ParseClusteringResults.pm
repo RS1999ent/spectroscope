@@ -319,7 +319,7 @@ sub print_clusters {
         or die ("Could not open ranked clusters file\n");
     
     open(my $ranked_clusters_dot_fh,
-        ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dat");
+        ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot");
     
     my $sort_routine;
     if($self->{RANK_FORMAT} =~ /req_difference/) {
