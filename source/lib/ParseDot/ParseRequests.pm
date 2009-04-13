@@ -80,7 +80,6 @@ my $_print_ordered_edges = sub {
     # Specify that this is a NUMERICAL sort!
 	foreach my $key (sort {$ordered_edge_hash->{$a} <=> $ordered_edge_hash->{$b}}
 					 keys %$ordered_edge_hash) {
-        print "$key\n";
 		printf $ordered_edges_fh "%-10u %s\n", ($ordered_edge_hash->{$key}, $key);
 	}
     
@@ -424,7 +423,7 @@ my $_handle_edges = sub {
 			
 			my $src_node_name = $node_name_hash->{$src_node_id};
 			my $dest_node_name = $node_name_hash->{$dest_node_id};
-			
+
 			$self->$_add_to_req_edge_hash($src_node_name, 
                                           $dest_node_name, 
                                           $edge_latency, 
@@ -615,10 +614,11 @@ sub new {
     } else {
         $self->{SNAPSHOT1_FILE} = undef;
     }
-    $self->{S0_REQUEST_INDEX_FILE} = "$output_dir/s0_request_index.dat";
-    $self->{S1_REQUEST_INDEX_FILE} = "$output_dir/s1_request_index.dat";
 
-    
+
+    # Output file names and hashes for this class
+    $self->{S0_REQUEST_INDEX_FILE} = "$output_dir/s0_request_index.dat";
+
     $self->{GLOBAL_REQ_EDGE_LATENCIES_FILE} = "$output_dir/global_req_edge_latencies.dat";
     $self->{GLOBAL_REQ_EDGE_LATENCIES_TEMP_FILE} = "$output_dir/global_req_temp_latencies.dat";
     $self->{ORDERED_REQ_EDGE_HASH} = {};
@@ -630,13 +630,22 @@ sub new {
     $self->{GLOBAL_EDGE_BASED_AVG_LATENCIES_HASH} = {};
 
     $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE} = "$output_dir/s0_edge_based_indiv_latencies.dat";
-    $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE} = "$output_dir/s1_edge_based_indiv_latencies.dat";
+
     $self->{NUM_EDGE_VALUES_SEEN_HASH} = {};
     
     $self->{GLOBAL_IDS_TO_LOCAL_IDS_FILE} = "$output_dir/global_ids_to_local_ids.dat";
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
-    
+
+    # Output files generated only if a snapshot1 file is provided
+    if(defined $self->{SNAPSHOT1_FILE}) {
+        $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE} = "$output_dir/s1_edge_based_indiv_latencies.dat";
+        $self->{S1_REQUEST_INDEX_FILE} = "$output_dir/s1_request_index.dat";
+    } else {
+        $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE} = undef;
+        $self->{S1_REQUEST_INDEX_FILE} = undef;
+    }
+        
     
     bless($self, $class);
     return $self;
@@ -653,16 +662,27 @@ sub do_output_files_exist {
     my $self = shift;
     
     if(-e $self->{S0_REQUEST_INDEX_FILE} &&
-        -e $self->{S1_REQUEST_INDEX_FILE} &&
        -e $self->{GLOBAL_REQ_EDGE_LATENCIES_FILE} &&
        -e $self->{GLOBAL_REQ_EDGE_LATENCIES_COLUMN_FILE} &&
        -e $self->{GLOBAL_EDGE_BASED_AVG_LATENCIES_FILE} &&
-       -e $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE} &&
-       -e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
-
+       -e $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+        
+        if(defined $self->{SNAPSHOT1_FILE}) {       
+            # Must also check to see if output files specific to
+            # snapshot 1 already exist
+            if(-e $self->{S1_REQUEST_INDEX_FILE} &&
+               -e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+                # All output files for snapshot1 and snapshot1 exist
+                return 1;
+            } 
+            # Output files for snapshot1 do not exist
+            return 0;
+        }
+        # No snapshot1 file; output files for snapshot0 exist
         return 1;
-    } 
-    
+    }
+
+    # Output files for snapshot0 do not exist
     return 0;
 }
 

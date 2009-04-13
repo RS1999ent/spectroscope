@@ -431,7 +431,6 @@ sub do_output_files_exist {
         #&& -e($self->{DISTANCE_MATRIX_FILE})) {
         return 1;
     }
-
     return 0;
 }
            

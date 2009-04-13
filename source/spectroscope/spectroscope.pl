@@ -1,6 +1,6 @@
-#! /usr/bin/perl -w
+#!/usr/bin/perl -w
 
-# $cmuPDL: Spectroscope.pl,v 1.7 2008/09/10 05:43:20 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.1 2009/03/17 21:08:30 source Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -98,13 +98,19 @@ if (defined $g_snapshot1_file) {
 ## Determine whether indices and the matlab clustering input
 # needs to be re-created.
 #
-if ($g_create_clustering_input->do_output_files_exist() == 0 ||
-    $g_parse_requests->do_output_files_exist() == 0 ||
-    $g_reconvert_reqs == 1) {
+my $clustering_output_files_exist = $g_create_clustering_input->do_output_files_exist();
+my $parse_requests_files_exist = $g_parse_requests->do_output_files_exist();
+
+if($clustering_output_files_exist == 0 || 
+   $parse_requests_files_exist == 0 ||
+   $g_reconvert_reqs == 1) {
+    
+    print "Re-translating reqs: parse_requests: $parse_requests_files_exist\n" . 
+        "clustering files exist: $clustering_output_files_exist\n";
     
     $g_parse_requests->parse_requests();
     $g_create_clustering_input->create_clustering_input();
-}
+}    
 
 ##
 # Free memory occupied by the g_parse_requests
@@ -129,10 +135,10 @@ if ($g_pass_through) {
 }
 
 # Get changed edges
-compare_edge_distributions("$g_convert_reqs_output_dir/s0_edge_based_indiv_latencies.dat",
-                           "$g_convert_reqs_output_dir/s1_edge_based_indiv_latencies.dat",
-                           "$g_convert_reqs_output_dir/global_req_edge_columns.dat",
-                           "$g_convert_reqs_output_dir/edge_distribution_comparisons.dat");
+#compare_edge_distributions("$g_convert_reqs_output_dir/s0_edge_based_indiv_latencies.dat",
+#                           "$g_convert_reqs_output_dir/s1_edge_based_indiv_latencies.dat",
+#                           "$g_convert_reqs_output_dir/global_req_edge_columns.dat",
+#                           "$g_convert_reqs_output_dir/edge_distribution_comparisons.dat");
                            
 
 my $g_print_requests = new PrintRequests("$g_convert_reqs_output_dir/global_ids_to_local_ids.dat",
@@ -149,6 +155,7 @@ my $g_parse_clustering_results = new ParseClusteringResults("$g_convert_reqs_out
                                                             $g_print_requests,
                                                             "$g_output_dir");
 
+print "Initializng parse clustering results\n";
 $g_parse_clustering_results->print_clusters();
 
    

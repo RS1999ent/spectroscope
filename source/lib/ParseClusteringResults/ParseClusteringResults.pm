@@ -15,80 +15,475 @@
 package ParseClusteringResults;
 
 use strict;
+use Cwd;
 use Test::Harness::Assert;
+use GD::Graph::boxplot;
+use Statistics::Descriptive;
+use diagnostics;
+
 
 #### Private functions ############
 
-##
-# Loads information about each cluster into
-# $self->{CLUSTER_INFO_HASH}.  For each cluster, an array is stored, 
-# consisting of: (<number of requests in s0>, <number of requests in s1>,
-# <avg. latency of requests in s0, avg. latency of requests in s1>
+
+## 
+# Prints two boxplots within one graph.  Boxplots
+# are placed in $self->{BOXPLOT_OUTPUT_DIR} and are named
+# cluster_($cluter_id)_boxplot.png
 #
-# @BUG: Right now, the array only contains: 
-# <number of requests in s0>, <number of requests in s1>.
-# This will have to be expanded later.
+# @param self: The object container
+# @param cluster_id: The ID of the cluster for which this graph is being printed
+# @parma s0_values: An array specifying the response-times for requests that
+# belong to snapshot0 within this cluster
+# @param s1_values: An array specifying the response-times for requests that
+# belong to snapshot1 within this cluster.
+##
+my $_print_boxplots = sub {
+    assert(scalar(@_) == 4);
+
+    my $self = shift;
+    my $cluster_id = shift;
+    my $s0_values = shift;
+    my $s1_values = shift;
+
+    # Create a new boxplot object
+    my $boxplot = new GD::Graph::boxplot( );
+
+    my $output_dir = $self->{BOXPLOT_OUTPUT_DIR};
+
+    # Make sure the output directory exists
+    system("mkdir -p $output_dir");
+
+    # Set options for the boxplot
+    $boxplot->set(
+                  x_label => 'Snapshot ID',
+                  y_label => 'Response time in us',
+                  title => "Boxplots for Cluster $cluster_id",
+                  upper_percent => 70, # Default
+                  lower_percent => 35, # Default
+                  step_const => 1.8,   # Default
+                  );
+    
+    # Create the boxplot dataset and plot it
+    my @labels;
+    my @values;
+
+    if(scalar(@$s0_values < 4) && scalar(@$s1_values < 4)) {
+        # Need to have at least four values to compute a boxplot
+        return;
+    }
+
+    if (scalar(@$s0_values) > 4) {
+        push(@labels, "s0");
+        push(@values, $s0_values);
+    }
+    if (scalar(@$s1_values) > 4) {
+        push(@labels, "s1");
+        push(@values, $s1_values);
+    }
+    my @boxplot_data = (\@labels,
+                        \@values);
+
+
+    my $gd = $boxplot->plot(\@boxplot_data);
+
+    # Print the boxplot to the appropriate output directory
+    my $output_filename = "$output_dir/cluster_$cluster_id" . "_boxplot.png";
+    open(IMG, ">$output_filename") or die $!;
+    binmode IMG;
+    print IMG $gd->png;
+    close(IMG);
+};
+
+
+##
+# Finds the mean and standard deviation of the data passed in
+#
+# @param self: The object container
+# @param data_ptr: A pointer to an array of data
+# 
+# @return: A pointer to an array, where the first element is
+# the mean and the second element is the standard deviation
+##
+my $_find_mean_and_stddev = sub {
+    my $self = shift;
+    my $data_ptr = shift;
+    my @mean_and_stddev;
+
+    if(scalar(@$data_ptr) < 4) {
+        # Not enough data to compute mean/stddev
+        $mean_and_stddev[0] = -1;
+        $mean_and_stddev[1] = -1;
+        return \@mean_and_stddev;
+    }
+
+    my $stat = Statistics::Descriptive::Full->new();
+    $stat->add_data($data_ptr);
+
+    $mean_and_stddev[0] = $stat->mean();
+    $mean_and_stddev[1] = $stat->standard_deviation();
+
+    return \@mean_and_stddev
+};
+
+
+## 
+# Returns the row number to use when writing a sparse matrix
+# of individual edge latencies.
+#
+# @note: Row counter is one indexed.
+#
+# @param self: The object containe
+# @param edge_name: The name of the edge
+#
+# @return: The row number to use for this edge
+##
+my $_get_edge_row_num = sub {
+    assert(scalar(@_) == 2);
+
+    my $self = shift;
+    my $edge_name = shift;
+    
+    my $edge_row_num_hash = $self->{EDGE_ROW_NUM_HASH};
+    my $reverse_edge_row_num_hash = $self->{REVERSE_EDGE_ROW_NUM_HASH};
+
+    if(!defined $edge_row_num_hash->{$edge_name}) {
+        $edge_row_num_hash->{$edge_name} = $self->{EDGE_ROW_COUNTER};
+        $reverse_edge_row_num_hash->{$self->{EDGE_ROW_COUNTER}} = $edge_name;
+        $self->{EDGE_ROW_COUNTER}++;
+    }
+
+    return $edge_row_num_hash->{$edge_name};
+};
+
+
+##
+# Returns the column number to use when writing a sparse matrix
+# of individual edge latencies.
+#
+# @note: Column counter is one indexed.
+#
+# @param self: The object container
+# @param edge_name: The name of the edge
+# @param edge_col_num_hash: The hash-table listing the next
+# column number to use for each edge
+#
+# @return: The column number to use for this edge
+##
+my $_get_edge_col_num = sub {
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $edge_name = shift;
+    my $edge_col_num_hash = shift;
+
+    if(!defined $edge_col_num_hash->{$edge_name}) {
+        $edge_col_num_hash->{$edge_name} = 1;
+    }
+   
+    my $col_num = $edge_col_num_hash->{$edge_name};
+    $edge_col_num_hash->{$edge_name}++;
+
+    return $col_num;
+};
+    
+
+##
+# Creates edge comparison files
+##
+my $_create_edge_comparison_files = sub {
+    assert(scalar(@_) == 4);
+
+    my $self = shift;
+    my $global_ids_ptr = shift;
+    my $s0_edge_file = shift;
+    my $s1_edge_file = shift;
+
+    my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
+
+    my %col_num_hash;    
+
+    open(my $s0_edge_fh, ">$s0_edge_file") or die $!;
+    open(my $s1_edge_fh, ">$s1_edge_file") or die $!;
+    my @fhs = ($s0_edge_fh, $s1_edge_fh);
+
+    foreach (@$global_ids_ptr) {
+        my @global_id = ($_);
+
+        my $snapshot_ptr = $print_graphs->get_snapshots_given_global_ids(\@global_id);
+        my $edge_info = $print_graphs->get_request_edge_latencies_given_global_id($global_id[0]);
+        
+        foreach my $key (keys %$edge_info) {
+            my $row_num = $self->$_get_edge_row_num($key);
+            my $edge_latencies = $edge_info->{$key};
+
+            foreach(@$edge_latencies) {
+                my $col_num = $self->$_get_edge_col_num($key,\%col_num_hash);
+                my $filehandle = $fhs[$snapshot_ptr->[0]];
+                printf $filehandle "%d %d %f\n", $row_num, $col_num, $_;
+            }
+        }
+    }
+
+    close($fhs[0]);
+    close($fhs[1]);
+};
+
+
+##
+# Compares CDFs of edge latencies by calling Matlab.  Writes an output
+# file while is formatted as follows: 
+#  <edge number>: <changed> <p-value>> <avg. latency s0> <stddev s0> <avg. latency s1> <stddev s1>
+#
+# Where "changed" is 1 if the edge latencies are statistically different between
+# s0 and 1, as determined by the Kologmov - Smirginoff test.
+#
+# @param self: The object container
+# @param s0_edges_file: Path to the sparse matrix of edge
+# latencies in s0.  Each row is an edge and each column a latency
+# @param s1_edges_file; Path to the sparse matrix of edge
+# latencies in s1.  Each row is an edge and each column a latency
+# @param output_file: The path to the file where edge comparison
+# information will be written
+#
+##
+my $_compare_edges = sub {
+    assert(scalar(@_) == 4);
+
+    my $self = shift;
+    my $s0_edges_file = shift;
+    my $s1_edges_file = shift;
+    my $output_file = shift;
+    
+    my $curr_dir = getcwd();
+    chdir '../lib/ParseClusteringResults';
+
+    system("matlab -nojvm -nosplash -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"".
+           "|| matlab -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"") == 0
+           or die ("Could not run Matlagb compare_edges script\n");
+
+    chdir $curr_dir;
+};
+
+
+##
+# Reads in a file of edge comparisons of the form: 
+# <edge row number> <changed> <p-value> <avg. latency s0> stddev s0> <avg. latency s1> <stddev s1>
+# and inserts this info into an edge_info_hash, which is of the form
+# edge_info_hash{edge_row_num} -> { CHANGED,
+#                                   AVG_LATENCIES,
+#                                   STDDEVS };
+#
+# @param self: The object container
+# @param edge_comparisons_file: The file containing edge comparisons
+#
+# @return: The edge_info_hash.
+##                             
+my $_load_edge_info_hash = sub {
+    assert(scalar(@_) == 2);
+    
+    my $self = shift;
+    my $edge_comparisons_file = shift;
+
+    my %edge_info_hash;
+    my $reverse_edge_row_num_hash = $self->{REVERSE_EDGE_ROW_NUM_HASH};
+    
+    open(my $edge_comparisons_fh, "<$edge_comparisons_file")
+        or die ("Could not open $edge_comparisons_file: $!\n");
+    
+    while (<$edge_comparisons_fh>) {
+        # This regexp must match the output specified by compare edges
+        if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+)/) {
+            my $edge_row_num = $1;
+            my $reject_null = $2;
+            my $p_value = $3;
+            my @avg_latencies = ($4, $6);
+            my @stddevs = ($5, $7);
+            
+            assert(defined $reverse_edge_row_num_hash->{$edge_row_num});
+            
+            $edge_info_hash{$edge_row_num} = { REJECT_NULL => $reject_null,
+                                               P_VALUE => $p_value,
+                                               AVG_LATENCIES => \@avg_latencies,
+                                               STDDEVS => \@stddevs };
+        } else {
+            print $_;
+            assert(0);
+        }
+    }
+    
+    close($edge_comparisons_fh);
+    
+    return \%edge_info_hash;
+};
+
+
+##
+# Computes information about edges seen for a set of global IDs
+##
+my $_compute_edge_info = sub {
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $global_ids_ptr = shift;
+    my $cluster_id = shift;
+
+    my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
+
+
+    my $output_dir = $self->{INTERIM_OUTPUT_DIR};
+
+    # Make sure the output directory exists
+    system("mkdir -p $output_dir");
+
+    my $s0_edge_file = "$output_dir/s0_cluster_$cluster_id" . 
+                       "_edge_latencies.dat";
+    my $s1_edge_file = "$output_dir/s1_cluster_$cluster_id" .
+                       "_edge_latencies.dat";
+    my $comparison_results_file = "$output_dir/$cluster_id" .
+                                   "_comparisons.dat";
+    
+    $self->$_create_edge_comparison_files($global_ids_ptr, $s0_edge_file, $s1_edge_file);
+    $self->$_compare_edges($s0_edge_file, $s1_edge_file, 
+                           $comparison_results_file);
+    my $edge_info = $self->$_load_edge_info_hash($comparison_results_file);
+
+    return $edge_info;
+};
+
+
+##
+# Given an input vector id, this function returns the global ids that map to it
+#
+# @param self: The object identifier
+# @param input_vector_id: The input vector id
+#
+# @return a pointer to an array of global ids that map to the input
+# vector id passed in
+##
+my $_get_global_ids = sub {
+    
+    assert(scalar(@_) == 2);
+
+    my $self = shift;
+    my $input_vector_id = shift;
+
+    my $input_vec_to_global_ids_hash = $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
+    my $global_ids_string = $input_vec_to_global_ids_hash->{$input_vector_id};
+    my @global_ids = split(/,/, $global_ids_string);
+    
+    assert(scalar(@global_ids) > 0);
+
+    return \@global_ids;
+};
+
+
+##
+# Computes statistics on each cluster and stores them in 
+# $self->{CLUSTER_INFO_HASH}.  Specifically, 
+# $self->{CLUSTER_INFO_HASH} stores a hash for each cluster
+# that is keyed by cluster_id and which contains the following 
+# information: 
+#
+#    \@frequencies: Distribution of requests from s0 and s1 in this cluster.
+#    \@avg_latency: The average latency of requests from s0 and s1
+#    \@edges: A index showing the edges in this cluster, their average
+#             latency in each snaphot, and the result of a statistical test
+#             that indicates whether the edge latencies for the edge are
+#             statistically different
+#
+# In addition to computer the cluster_info_hash, this function computes
+# two boxplots for each cluster.  The first boxplot shows response times
+# for requests from s0 and the second from s1.
 #
 # @param self: The object-container
 ##
-my $_load_cluster_info_hash = sub {
-    my $self = shift;
-    
-    my $cluster_assignment_hash = $self->{CLUSTER_HASH};
-    my $input_vector_hash = $self->{INPUT_VECTOR_HASH};
-    
-    my %cluster_info_hash;
-    
-    ##
-    # Build a list of 
-    # clusters -> <number of reqs in s0 number of reqs in s1>
-    #
-    # @bug: Eventually want to add avg. latency of cluster and
-    # total latency of cluster to the CLUSTER_INFO_HASH as well.    
-    ##
-    foreach my $key (keys %$cluster_assignment_hash) {
-        
-        my @input_vec_ids = split(/,/, $cluster_assignment_hash->{$key});
-        my @cluster_info = (0, 0, 0, 0);
+my $_compute_cluster_info = sub {
 
+    assert(scalar(@_) == 1);
+
+    my $self = shift;    
+    my $cluster_assignment_hash = $self->{CLUSTER_HASH};
+    my $graph_info = $self->{PRINT_GRAPHS_CLASS};
+    my %cluster_info_hash;
+
+    foreach my $key (sort keys %$cluster_assignment_hash) {
+        print "Processing statistics for Cluster: $key...\n";
+
+        my @input_vec_ids = split(/,/, $cluster_assignment_hash->{$key});
+
+        my %this_cluster_info;
+        my @global_ids;
+
+        # Iterate through the input vectors that are assigned to each cluster
+        # and build a list of matching global IDs.
         foreach(@input_vec_ids) {
-            
-            my @originating_snapshots = split(/,/, $input_vector_hash->{$_});
-            $cluster_info[0] += $originating_snapshots[0];
-            $cluster_info[1] += $originating_snapshots[1];
+
+            my $input_vector_id = $_;
+            # Get the global IDs that map to this input_vec_id
+            my $input_vec_global_ids = $self->$_get_global_ids($input_vector_id);
+            # Add global ids to the list of global IDs for this cluster
+            @global_ids = (@global_ids, @$input_vec_global_ids);
         }
+
+        # Compute statistics for this cluster
+        my $snapshot_frequencies = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
         
-        $cluster_info_hash{$key} = join(',', @cluster_info);
+        my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
+
+
+        my $s0_mean_and_stddev = $self->$_find_mean_and_stddev($response_times->{S0_RESPONSE_TIMES});
+
+        my $s1_mean_and_stddev = $self->$_find_mean_and_stddev($response_times->{S1_RESPONSE_TIMES});
+
+        $self->$_print_boxplots($key, 
+                                $response_times->{S0_RESPONSE_TIMES}, 
+                                $response_times->{S1_RESPONSE_TIMES});
+        undef $response_times;
+
+        my $edge_info = $self->$_compute_edge_info(\@global_ids, $key);
+        
+        # Fill in the %this_cluster_info_hash and add it to the the %cluster_info_hash
+        $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
+        $this_cluster_info{AVG_RESPONSE_TIMES} = [$s0_mean_and_stddev->[0],
+                                                    $s1_mean_and_stddev->[0]];
+        $this_cluster_info{STDDEVS} = [$s0_mean_and_stddev->[1],
+                                             $s1_mean_and_stddev->[1]];
+        $this_cluster_info{EDGE_INFO} = $edge_info;
+        
+        $cluster_info_hash{$key} = \%this_cluster_info;
     }
-    
+     
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
-};   
+};
 
 
 ##
 # Loads the following input files into hashes for use by
 # the other functions in this class: 
 #    $self->{CLUSTERS_FILE} is loaded into $self->{CLUSTER_HASH}
-#    $self->{INPUT_VECTOR_FILE} is loaded into #self->{INPUT_VECTOR_HASH}
+#    $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} is loaded into 
+#    $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH}
 #
 # $self->{CLUSTERS_FILE} contains information about each cluster.  Each
-# row represents a cluster and contains the row offsets into
-# $self->{INPUT_VECTOR_FILE} of the assignments.
-# 
-# #self->{INPUT_VECTOR_FILE} contains the MATLAB vector representatio
-# of each unique request.  Each row looks like:
-#  <# of reqs in s0> <#of reqs in s1> <representation>.
+# row represents a cluster and contains INPUT_VECTOR_IDs of the requests
+# assigned to that cluster.
+#
+# Each line of $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} reprresents a 
+# INPUT_VECTOR_ID and the numbers on each line represent the GLOBAL_IDs
+# that map to the INPUT_VECTOR_IDs
+#
+# It is assumed that cluster ids and input vector ids are 1-indexed
 #
 # @param self: The object-container
 ##
 my $_load_files_into_hashes = sub {
+    assert(scalar(@_) == 1);
+
     my $self = shift;
     
     # Open input file
     open (my $clusters_fh, "<$self->{CLUSTERS_FILE}") 
         or die("Could not open $self->{CLUSTERS_FILE}\n");
-    open (my $input_vector_fh, "<$self->{INPUT_VECTOR_FILE}")
-        or die("Could not open $self->{INPUT_VECTOR_FILE}\n");
     open (my $input_vec_to_global_ids_fh, "<$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}")
         or die("Could not open $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}");
     
@@ -106,32 +501,10 @@ my $_load_files_into_hashes = sub {
     close($clusters_fh);
     $self->{CLUSTER_HASH} = \%cluster_hash;
     
-    # load $self->{INPUT_VECTOR_HASH}
-    my %input_vector_hash;
-    my $input_vector_num = 1;
-    while(<$input_vector_fh>) {
-        chomp;
-        my @hash_item;
-        ##
-        # Each line in this file should be of the format
-        # Number of requests in s0, number of requests in s1 <vector>
-        ##
-        if(/(\d+) (\d+)/) {
-            @hash_item = ($1, $2);
-        } else {
-            assert(0);
-        }
-        
-        $input_vector_hash{$input_vector_num} = join(',', @hash_item);
-        $input_vector_num++;
-    }
-    close($input_vector_fh);
-    $self->{INPUT_VECTOR_HASH} = \%input_vector_hash;
-    
     # load $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH}
     my %input_vec_to_global_ids_hash;
     my $input_vec_num = 1;
-    while(<$input_vec_to_global_ids_fh>) {
+    while (<$input_vec_to_global_ids_fh>) {
         chomp;
         my @hash_item = split(/ /, $_);
 
@@ -147,65 +520,103 @@ my $_load_files_into_hashes = sub {
 
 
 ##
-# A sorting routine for printing clusters ranked by difference.
-# Given two clusters, they are ranked by the following logic
-#     * For each cluster calculate ki = (#reqs in s1 - #reqs in s0)/total reqs
-#     * if k0 > k1, return 1;
-#     * if k0 < k1, return 0;
-#     * if k0 == k1 return 1;
-#
-# @param a: Key of first cluster
-# @param b: Key of second cluster
-##
-my  $_sort_by_difference_in_number_of_reqs = sub {
-    my $self = shift;
-
-    my $cluster_info_hash = get_cluster_info_hash();
-
-    my @a_array = split(/,/, $cluster_info_hash->{1});
-    my @b_array = split(/,/, $cluster_info_hash->{1});
-    
-    my $a_s0_reqs = $a_array[0];
-    my $a_s1_reqs = $a_array[1];
-    my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
-    
-    my $b_s0_reqs = $b_array[0];
-    my $b_s1_reqs = $b_array[1];
-    my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
-    
-    if($a_rank > $b_rank) {
-        return 1;
-    }
-    if($a_rank < $b_rank) {
-        return -1;
-    }
-    return 0;
-};
-
-
-##
 # Prints the cluster representative of the cluster specified
 #
 # @param self: The object-container
 # @param cluster_id: The cluster to print
+# @param edge_info: The information about edges that should be
+#  super-imposed on top of the request
 # @param out_fh: The filehandle to which the graph should be printed
 ##
 
 my $_print_graph = sub {
-    my $self = shift;
+    assert(scalar(@_) == 4);
 
+    my $self = shift;
     my $cluster_id = shift;
+    my $edge_info = shift;
     my $out_fh = shift;
 
     my $print_graphs_class = $self->{PRINT_GRAPHS_CLASS};
 
+    # Get the graph representation of the cluster.  This is the request
+    # that corresponds to the first input vector id specified in the
+    # cluster hash.
     my $cluster_hash = $self->{CLUSTER_HASH};
     my $input_vec_to_global_ids_hash = $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
-
     my @input_vecs = split(/,/, $cluster_hash->{$cluster_id});
-
     my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
-    $print_graphs_class->print_global_id_indexed_request($global_ids[0], $out_fh);
+
+    # Print the graph
+    $print_graphs_class->print_global_id_indexed_request($global_ids[0], 
+                                                         $edge_info, 
+                                                         $self->{REVERSE_EDGE_ROW_NUM_HASH},
+                                                         $out_fh);
+};
+
+
+#### Private sort routines #######
+
+##
+# For each cluster, this function creates a metric:
+#   (num_reqs_from_s1 - num_requests_in_s0)/total_requests_in_cluster
+# and then ranks clusters in descending order.
+#
+# @param $self: The object container
+# @param $a: The first key
+# @param $b: THe second key
+##
+my $_sort_clusters_by_frequency_difference = sub {
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $a = shift;
+    my $b = shift;
+
+    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
+    
+    my $a_frequencies = $cluster_info_hash->{$a}->{FREQUENCIES};
+    my $b_frequencies = $cluster_info_hash->{$b}->{FREQUENCIES};
+    
+    my $a_s0_reqs = $a_frequencies->[0];
+    my $a_s1_reqs = $a_frequencies->[1];
+    my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
+    
+    my $b_s0_reqs = $b_frequencies->[0];
+    my $b_s1_reqs = $b_frequencies->[1];
+    my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
+    
+    if($b_rank > $a_rank) {
+        return 1;
+    }
+    if($b_rank < $a_rank) {
+        return -1;
+    }
+    if($b_s1_reqs > $a_s1_reqs) {
+        return 1;
+    }
+    
+    return 0;
+};
+
+
+## 
+# Wrapper function for choosing how clusters
+# will be ranked.  
+#
+# @param self: The object container
+##
+my $_sort_clusters_wrapper = sub { 
+    assert(scalar(@_) == 1);
+
+    my $self = shift;
+
+    if ($self->{RANK_FORMAT} =~ /req_difference/) {
+        $self->$_sort_clusters_by_frequency_difference($a, $b);
+    } else {
+        # Nothing else supported now :(
+        assert (0);
+    }
 };
 
 
@@ -223,22 +634,19 @@ my $_print_graph = sub {
 # each snapshot map to each representation.  Each row
 # of this file looks like:
 #  <# of s0 reqs> <# of s1 reqs> <MATLAB compatible rep>
+#
+# @param input_vec_to_global_ids_file: File mapping MATLAB
+# compatible representations of requests to the Global IDs
+# of those requests
 # 
 # @param rank_format: One of "req_difference,"
 # "avg_latency_difference," or "total_latency_difference"
 #
+# @param print_graphs_class: The class used to print and
+# obtain information about the input request-flow gaphs
+
 # @param output_dir: The directory in which the output files 
 # should be placed
-#
-# @param snapshot0_file: The file containing requests
-# from snapshot0.
-# 
-# @param snapshot0_index: The index on the snapshot0_file
-#
-# @param snapshot1_file: (OPTIONAL) The file containing requests
-# from snapshot1
-#
-# @param snapshot1_index: (OPTIONAL) The index on snapshot1
 ##
 sub new {
     my $proto = shift;
@@ -268,17 +676,111 @@ sub new {
     
     # Hashes that will be maintained.  These hashes
     # are loaded from text files.
-    $self->{INPUT_VECTOR_HASH} = undef;
     $self->{CLUSTER_HASH} = undef;
     $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH} = undef;
     $self->{INPUT_HASHES_LOADED} = 0;
-    
-    # This hash is built by this class.
+
+    # These hashes are computed by the cluster
+    $self->{EDGE_ROW_NUM_HASH} = { };
+    $self->{REVERSE_EDGE_ROW_NUM_HASH} = { };
     $self->{CLUSTER_INFO_HASH} = undef;
+
+    # Counter maintained by this cluster
+    $self->{EDGE_ROW_COUNTER} = 1;
+
+    # Some derived outputs
+    $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
+    $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interm_cluster_data";
+    
     
     bless($self, $class);
     
     return $self;
+}
+
+
+##
+# Clears this object of any data it has computed
+# 
+# @param self: The object container
+##
+sub clear {
+    assert(scalar(@_) == 1);
+
+    my $self = shift;
+
+    # Undef hashes of input files
+    undef $self->{CLUSTER_HASH};
+    undef $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
+    undef $self->{INPUT_HASHES_LOADED} = 0;
+
+    # undef hashes computed by this cluster
+    $self->{EDGE_ROW_NUM_HASH} = {};
+    $self->{REVERSE_EDGE_ROW_NUM_HASH} = {};
+    undef $self->{CLUSTER_INFO_HASH};
+
+    $self->{EDGE_ROW_COUNTER} = 1;
+}
+
+
+##
+# Prints ranked cluster information.
+#
+# @param self: The object-container
+##
+sub print_clusters {
+    assert(scalar(@_) == 1);
+    
+    my $self = shift;
+    
+    if($self->{INPUT_HASHES_LOADED} == 0) {
+        $self->$_load_files_into_hashes();
+    }
+    
+    if(!defined $self->{CLUSTER_INFO_HASH}) {
+        $self->$_compute_cluster_info();
+    }
+    
+    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
+    
+    open(my $ranked_clusters_fh, 
+         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat")
+        or die ("Could not open ranked clusters file: $!\n");
+    
+    open(my $ranked_clusters_graph_fh,
+         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
+        or die("Could not open ranked clusters file\n");
+    
+    
+    # Print header to ranked_cluster_fh
+    printf $ranked_clusters_fh "%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s\n",
+    "rank", "cluster_id", "s0_freq", "s1_freq", "s0_avg_lat", "s0_stddev", "s1_avg_lat", "s1_stddev";
+    
+    # Print information about each cluster ranked appropriately
+    my $rank = 1;
+    for my $key (sort {$self->$_sort_clusters_wrapper()} keys %$cluster_info_hash) {
+        
+        my $this_cluster_info_hash = $cluster_info_hash->{$key};
+        
+        my $freqs = $this_cluster_info_hash->{FREQUENCIES};
+        my $avg_response_times = $this_cluster_info_hash->{AVG_RESPONSE_TIMES};
+        my $stddevs = $this_cluster_info_hash->{STDDEVS};
+        my $edge_info = $this_cluster_info_hash->{EDGE_INFO};
+        
+        # Write rank cluster_id s0_frequency s1_frequency s0_avg_lat s0_stddev s1_avg_lat s1_stddev
+        printf $ranked_clusters_fh "%-15d %-15d %-15d %-15d %-12.3f %-12.3f %-12.3f %-12.3f\n",
+        $rank, $key, $freqs->[0], $freqs->[1], $avg_response_times->[0], $stddevs->[0],
+        $avg_response_times->[1], $stddevs->[1];
+
+        # Print a visual representation of the cluster
+        $self->$_print_graph($key, $edge_info, $ranked_clusters_graph_fh);
+        
+        $rank++;
+    }
+    
+    close ($ranked_clusters_fh);
+    close($ranked_clusters_graph_fh);
+    
 }
 
 
@@ -292,103 +794,89 @@ sub new {
 #
 # @param self: The object-container
 ##
-sub print_clusters {
-    my $self = shift;
-    
-    my $ranked_cluster_info_file;
-    my $ranked_cluster_dot_file;
-    
-    # If the necessary input files have yet been
-    # loaded in, do so now
-    #
-    if($self->{INPUT_HASHES_LOADED} == 0) {
-       $self->$_load_files_into_hashes();
-   }
-    
-    # If necessary information about each cluster has
-    # not yet been obtained, do so now
-    if (!defined $self->{CLUSTER_INFO_HASH}) {
-        $self->$_load_cluster_info_hash();
-    }
-    
-    # Prep for printing clusters
-    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
-    
-    open(my $ranked_clusters_fh, 
-         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat") 
-        or die ("Could not open ranked clusters file\n");
-    
-    open(my $ranked_clusters_dot_fh,
-        ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot");
-    
-    my $sort_routine;
-    if($self->{RANK_FORMAT} =~ /req_difference/) {
-        $sort_routine = $_sort_by_difference_in_number_of_reqs;
-    }
-    
-    # Print out cluster information
-    my $rank = 1;
-    for my $key (sort {    
-        my @a_array = split(/,/, $cluster_info_hash->{$a});
-        my @b_array = split(/,/, $cluster_info_hash->{$b});
-        
-        my $a_s0_reqs = $a_array[0];
-        my $a_s1_reqs = $a_array[1];
-        my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
-        
-        my $b_s0_reqs = $b_array[0];
-        my $b_s1_reqs = $b_array[1];
-        my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
-    
-        if($a_rank > $b_rank) {
-            return -1;
-        }
-        if($a_rank < $b_rank) {
-            return 1;
-        }
-
-        # If the ranks are equal, order based on
-        # number of requests from snapshot 1
-        if($a_s1_reqs > $b_s1_reqs) {
-            return -1;
-        }
-        if($a_s1_reqs < $b_s1_reqs) {
-            return 1;
-        }
-
-        return 0;
-    } keys %$cluster_info_hash) {
-
-        # Print information about the cluster
-        my @cluster_info = split(/,/, $cluster_info_hash->{$key});
-        printf $ranked_clusters_fh "%5d %5d ", $rank, $key;
-        printf $ranked_clusters_fh "%5d %5d %3.2f %3.2f\n", @cluster_info;
-        $rank++;
-        
-        # Print a dot graph representing this cluster
-        $self->$_print_graph($key, $ranked_clusters_dot_fh);
-    }
-
-    close($ranked_clusters_fh);
-    close($ranked_clusters_dot_fh);
-}
-
-
-1;
+#sub print_clusters {
+#    my $self = shift;
+#    
+#    my $ranked_cluster_info_file;
+#    my $ranked_cluster_dot_file;
+#    
+#    # If the necessary input files have yet been
+#    # loaded in, do so now
+#    #
+#    if($self->{INPUT_HASHES_LOADED} == 0) {
+#       $self->$_load_files_into_hashes();
+#   }
+#    
+#    # If necessary information about each cluster has
+#    # not yet been obtained, do so now
+#    if (!defined $self->{CLUSTER_INFO_HASH}) {
+#        $self->$_load_cluster_info_hash();
+#    }
+#    
+#    # Prep for printing clusters
+#    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
+#    
+#    open(my $ranked_clusters_fh, 
+#         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat") 
+#        or die ("Could not open ranked clusters file\n");
+#    
+#    open(my $ranked_clusters_dot_fh,
+#        ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot");
+#    
+#    my $sort_routine;
+#    if($self->{RANK_FORMAT} =~ /req_difference/) {
+#        $sort_routine = $_sort_by_difference_in_number_of_reqs;
+#    }
+#    
+#    # Print out cluster information
+#    my $rank = 1;
+#    for my $key (sort {    
+#        my @a_array = split(/,/, $cluster_info_hash->{$a});
+#        my @b_array = split(/,/, $cluster_info_hash->{$b});
+#        
+#        my $a_s0_reqs = $a_array[0];
+#        my $a_s1_reqs = $a_array[1];
+#        my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
+#        
+#        my $b_s0_reqs = $b_array[0];
+#        my $b_s1_reqs = $b_array[1];
+#        my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
+#    
+#        if($a_rank > $b_rank) {
+#            return -1;
+#        }
+#        if($a_rank < $b_rank) {
+#            return 1;
+#        }
+#
+#        # If the ranks are equal, order based on
+#        # number of requests from snapshot 1
+#        if($a_s1_reqs > $b_s1_reqs) {
+#            return -1;
+#        }
+#        if($a_s1_reqs < $b_s1_reqs) {
+#            return 1;
+#        }
+#
+#        return 0;
+#    } keys %$cluster_info_hash) {
+#
+#        # Print information about the cluster
+#        my @cluster_info = split(/,/, $cluster_info_hash->{$key});
+#        printf $ranked_clusters_fh "%5d %5d ", $rank, $key;
+#        printf $ranked_clusters_fh "%5d %5d %3.2f %3.2f\n", @cluster_info;
+#        $rank++;
+#        
+#        # Print a dot graph representing this cluster
+#        $self->$_print_graph($key, $ranked_clusters_dot_fh);
+#    }
+#
+#    close($ranked_clusters_fh);
+#    close($ranked_clusters_dot_fh);
+#}
 
 
-
-
-                                    
-
-                                    
-    
-
-    
-    
-    
-    
-    
+1;    
 
 
     
