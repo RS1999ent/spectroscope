@@ -97,8 +97,10 @@ function [] = compare_edges(s0_file, s1_file, output_file)
                     mean(s1_edge_latencies), std(s1_edge_latencies));
             continue;
         end
-
-        [h, p] = kstest2(s0_edge_latencies, s1_edge_latencies);
+          
+        s0_edge_latencies_smoothed = floor(s0_edge_latencies/1000);
+        s1_edge_latencies_smoothed = floor(s1_edge_latencies/1000);
+        [h, p] = kstest2(s0_edge_latencies_smoothed, s1_edge_latencies_smoothed, .05, 'smaller');
         
         fprintf(outfid, '%d %d %f %3.2f %3.2f %3.2f %3.2f\n', ...
                 i, h, p, mean(s0_edge_latencies), std(s0_edge_latencies), ...
