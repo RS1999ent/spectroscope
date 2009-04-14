@@ -414,7 +414,7 @@ my $_handle_edges = sub {
 
 	while(<$in_data_fh>) {
 
-		if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[label=\"R: ([0-9\.]+) us\"\]/) {
+		if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[label=\"R: ([0-9\.]+) us\".*\]/) {
 
 			my $src_node_id = "$1.$2";
 			my $dest_node_id = "$3.$4";

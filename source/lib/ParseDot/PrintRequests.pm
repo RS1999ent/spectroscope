@@ -182,7 +182,7 @@ my $_obtain_graph_edge_latencies = sub {
     
     my %graph_edge_latencies_hash;
 
-    while ($graph =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[label=\"R: ([0-9\.]+) us\"\]/g) {
+    while ($graph =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[label=\"R: ([0-9\.]+) us\".*\]/g) {
 
         my $src_node_id = $1.$2;
         my $dest_node_id = $3.$4;
@@ -256,24 +256,33 @@ my $_overlay_edge_info = sub {
                                      $edge_info_hash->{$key}->{STDDEVS}->[1]);
         
         # Iterate through graph looking for this edge
+        my $found = 0;
         for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
             my $line = $mod_graph_array[$i];
 
             if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) { #\[label=\"R: ([0-9\.]+) us\"\]/) {
+
                 my $src_node_id = $1.$2;
                 my $dest_node_id = $3.$4;
                 
                 my $src_node_name = $node_name_hash{$src_node_id};
                 my $dest_node_name = $node_name_hash{$dest_node_id};
                 
+                    if ($line =~ m/dashed/) {
+                        print "$src_node_name->$dest_node_name\n";
+                        print "$edge_name\n\n";
+                    }
+     
                 if("$src_node_name->$dest_node_name" eq $edge_name) {
-                    #$line =~ s/\[label=\"R: [0-9\.]+ us\"\]/$edge_info_line/g;
+
                     $line =~ s/\[.*\]/$edge_info_line/g;
                     $mod_graph_array[$i] = $line;
+                    $found = 1;
                     last;
                 }
             }
         }
+        assert($found == 1);
     }
 
     my $mod_graph = join("\n", @mod_graph_array);
