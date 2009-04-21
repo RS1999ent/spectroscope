@@ -52,7 +52,9 @@
 package ParseRequests;
 
 use strict;
+use warnings;
 use Test::Harness::Assert;
+use ParseDot::DotHelper;
 
 
 # Global variables ########################
@@ -199,39 +201,7 @@ my $_print_edge_based_latencies = sub {
 # @param in_data_fh: The filehandle of the snapshot file.  The
 # offset is set to the start of the nodes of the current request.
 ##
-my $_handle_nodes = sub {
-    my $self = shift;
-    
-	my $in_data_fh = shift;
-	my $node_name_hash = shift;
 
-	my $last_in_data_fh_pos;
-    my $node_name;
-    
-	$last_in_data_fh_pos = tell($in_data_fh);
-    
-	while(<$in_data_fh>) {
-
-		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
-
-			# Add the Node label to the alphabet hash 
-            if (defined $4) { 
-                $node_name = $3 . "_" . $4; 
-            } else {
-                $node_name = $3;
-            }
-            
-			# Add the node id to the node_id_hash;
-			my $node_id = "$1.$2";
-			$node_name_hash->{$node_id} = $node_name;
-		} else {
-			# Done parsing the labels attached to nodes
-			seek($in_data_fh, $last_in_data_fh_pos, 0); # SEEK_SET
-			last;
-		}
-		$last_in_data_fh_pos = tell($in_data_fh);
-	}
-};
 
 
 ##
@@ -566,7 +536,7 @@ my $_handle_requests = sub {
         # Skip the Begin Digraph { line
         $_ = <$snapshot_fh>;
 
-        $self->$_handle_nodes($snapshot_fh, \%node_name_hash);
+        parse_nodes_from_file($snapshot_fh, 1, \%node_name_hash);
         $self->$_handle_edges($snapshot_fh, \%node_name_hash, \%req_edge_latency_hash,
                              $request_latency, $snapshot);
 

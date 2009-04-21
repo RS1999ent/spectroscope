@@ -8,8 +8,11 @@
 package PrintRequests;
 
 use strict;
+use warnings;
 use Test::Harness::Assert;
+use List::Util qw[min];
 use diagnostics;
+use ParseDot::DotHelper;
 
 
 #### Private functions #########
@@ -126,40 +129,6 @@ my $_get_local_id_indexed_request = sub {
 
 
 ##
-# Creates a hash mapping unique ids of nodes to node names
-#
-# @param self: The object container
-# @param graph: A string containing the DOT representation of a graph
-# @param node_name_hash: The hash that will be filled in and which
-# will map unique ids to nodes
-#
-# @return: A string containing a partially consumed DOT graph (all
-# the node names will have been consumed)
-##
-my $_parse_nodes = sub {
-    
-    assert(scalar(@_) == 3);
-
-    my $self = shift;
-    my $graph = shift;
-    my $node_name_hash = shift;
-    
-    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/g) {
-
-        my $node_name;
-        if (defined $4) {
-            $node_name = $3 . "_" . $4;
-        } else {
-            $node_name = $4;
-        }
-
-        my $node_id = $1.$2;
-        $node_name_hash->{$node_id} = $node_name;
-    }
-};
-
-
-##
 # This function parses the input graph and returns the individual edge
 # latencies for each edge in the graph.  The hash looks like: 
 # { EDGE_NAME 1 => \@edge_latencies,
@@ -236,7 +205,7 @@ my $_overlay_edge_info = sub {
     my $edge_num_to_edge_name_hash = shift;
 
     my %node_name_hash;
-    $self->$_parse_nodes($request, \%node_name_hash);
+    parse_nodes_from_file($request, 1, \%node_name_hash);
 
     my @mod_graph_array = split(/\n/, $request);
 
@@ -247,13 +216,15 @@ my $_overlay_edge_info = sub {
 
         my $color;
         $color = ($edge_info_hash->{$key}->{REJECT_NULL} == 1)?"red":"black";
-        my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %3.2f/%3.2f\\n   s: %3.2f/%3.2f\"\]",
+
+        # Print info for this edge; round average and stddev of latency to nearest integer
+        my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %d / %d\\n   s: %d / %d\"\]",
                                      $color, 
                                      $edge_info_hash->{$key}->{P_VALUE}, 
-                                     $edge_info_hash->{$key}->{AVG_LATENCIES}->[0],
-                                     $edge_info_hash->{$key}->{AVG_LATENCIES}->[1],
-                                     $edge_info_hash->{$key}->{STDDEVS}->[0],
-                                     $edge_info_hash->{$key}->{STDDEVS}->[1]);
+                                     int($edge_info_hash->{$key}->{AVG_LATENCIES}->[0] + .5),
+                                     int($edge_info_hash->{$key}->{AVG_LATENCIES}->[1] + .5),
+                                     int($edge_info_hash->{$key}->{STDDEVS}->[0] + .5),
+                                     int($edge_info_hash->{$key}->{STDDEVS}->[1] + .5));
         
         # Iterate through graph looking for this edge
         my $found = 0;
@@ -290,7 +261,190 @@ my $_overlay_edge_info = sub {
     return $mod_graph;
 };
 
+
+##
+# Helper function for match_graphs().  This is a recursive function
+# that builds a list of matching nodes given two graphs.  Matching
+# is done by a depth-first traversal of the graphs and a matching
+# operation along a particular sub-path is terminated as soon as a single
+# non-matching node is found.
+#
+# @param self: The object container
+# @param graph1_node: A pointer to the current node under examination from the 1st graph
+# @param graph2_node: A pointer to the The current node under examination from the 2nd graph
+# @param graph1_node_name_hash: A pointer to a hash that specifies the structure of the 1st graph
+# @param graph2_node_name_hash: A pointer to a hash that specifies the structure of the 2nd graph
+#
+#
+# graph1_node and graph2_node are hashes that are structured as follows: 
+#   graphx_node => {NAME => string,
+#                   {CHILDREN => ptr to array of indexes into graphx_structure}
+#
+# the CHILDREN array MUST be ordered alphabetically in ascending order as per 
+# the names of the children
+#
+# graph1_structure and graph2_structure are hashes that are structured as follows:
+#   graphx_structure => {ID} => graphx_node
+# These hashes encode the structure of a request-flow graph
+##
+my $_match_nodes;
+$_match_nodes = sub {
+    assert(scalar(@_) == 6);
+
+    my $self = shift;
+    my $graph1_node = shift;
+    my $graph2_node = shift;
+    my $graph1_structure = shift;
+    my $graph2_structure = shift;
+    my $matching_nodes = shift;
+
+    if($graph1_node->{NAME} eq $graph2_node->{NAME}) {
+        
+        # Add this to the list of matching nodes
+        push(@$matching_nodes, $graph1_node->{NAME});
+
+        my $node1_children_array = $graph1_node->{CHILDREN};
+        my $node2_children_array = $graph2_node->{CHILDREN};
+
+        my $node1_num_children = scalar(@$node1_children_array);
+        my $node2_num_children = scalar(@$node2_children_array);
+
+        my $j = 0;
+        for(my $i = 0; $i < $node1_num_children; $i++) {
+            for (my $k = $j; $k < $node2_num_children; $k++) {
+                my $node1_child = $graph1_structure->{$node1_children_array->[$i]};
+                my $node2_child = $graph2_structure->{$node2_children_array->[$k]};
+
+                if ($node1_child->{NAME} gt $node2_child->{NAME}) {
+                    next;
+                } 
+                if ($node1_child->{NAME} lt $node2_child->{NAME}) {
+                    $j = $k;
+                    last;
+                }
+                if($node1_child->{NAME} eq $node2_child->{NAME}) {
+                    $j = $k + 1;
+                    $self->$_match_nodes($node1_child, $node2_child,
+                                         $graph1_structure, $graph2_structure,
+                                         $matching_nodes);
+                    last;
+                }
+            }
+        }
+    }
+    print "Non-matching root node\n";
+};
+
+
+##
+# Sorts the children array of each node in the graph_structure
+# hash by the name of the node.  
+#
+# @param self: The object container
+# @param graph_structure_hash: A pointer to a hash containing the nodes
+# of a request-flow graph.
+##
+my $_sort_graph_structure_children = sub {
     
+    assert(scalar(@_) == 2);
+
+    my $self = shift;
+    my $graph_structure_hash = shift;
+
+    foreach my $key (keys %$graph_structure_hash) {
+        my $node = $graph_structure_hash->{$key};
+        my @children = $node->{CHILDREN};
+
+        my @sorted_children = sort {$children[$a] cmp $children[$b]} @children;
+        $node->{CHILDREN} = \@sorted_children;
+    }
+};
+                                 
+##
+# Builds a tree representation of a DOT graph passed in as a string and
+# returns a hash containing each of the nodes of tree, along with 
+# a pointer to the root node.
+# 
+# Each node of the tree looks like
+#  node = { NAME => string,
+#           CHILDREN => \@array of node IDs}
+#
+# The hash representing the entire tree returned is a hash of nodes, indexed
+# by the node ID.  
+#
+# @note: This function expects the input DOT representation to have been
+# printed using a depth-first traversal.  Specifically, the source node
+# of the first edge printed MUST be the root.
+#
+# @param self: The object container
+# @param graph: A string representation of the DOT graph
+# @param graph_node_hash: Names of each node, indexed by Nodie ID
+#
+# @return a hash comprised of 
+#   { ROOT => Pointer to root node
+#     NODE_LIST => Hash of all nodes, indexed by ID}
+##
+my $_build_graph_structure = sub {
+    
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $graph = shift;
+    my $graph_node_hash = shift;
+    
+    my %graph_structure_hash;
+    my $first_line = 1;
+    my $root_ptr;
+
+    my @graph_array = split(/\n/, $graph);
+
+    # Build up the graph structure hash by iterating through
+    # the edges of the graph structure
+    foreach(@graph_array) {
+        my $line = $_;
+        
+        if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) {
+            my $src_node_id = $1.$2;
+            my $dest_node_id = $3.$4;
+            
+            my $src_node_name = $graph_node_hash->{$src_node_id};
+            my $dest_node_name = $graph_node_hash->{$dest_node_id};
+            
+            if(!defined $graph_structure_hash{$dest_node_id}) {
+                my @children_array;
+                my %dest_node = {NAME => $dest_node_name,
+                                 CHILDREN => \@children_array };
+                $graph_structure_hash{$dest_node_id} = \%dest_node;
+            }
+            my $dest_node_hash_ptr = $graph_structure_hash{$dest_node_id};
+            
+            
+            if (!defined $graph_structure_hash{$src_node_id}) {
+                my @children_array;
+                my %src_node =  { NAME => $src_node_name,
+                                  CHILDREN => \@children_array };
+                $graph_structure_hash{$src_node_id} = \%src_node;
+            }
+            my $src_node_hash_ptr = $graph_structure_hash{$src_node_id};
+
+            # If this is the first edge parsed in the graph, then this is 
+            # also the root of the graph.  
+            if($first_line == 1) {
+                $root_ptr = $src_node_hash_ptr;
+                $first_line = 0;
+            }
+            push(@{$src_node_hash_ptr->{CHILDREN}}, $dest_node_id);
+        }
+    }
+    
+    # Finally, sort the children array of each node in the graph structure
+    # alphabetically
+    $self->$_sort_graph_structure_children(\%graph_structure_hash);
+    
+    return {ROOT =>$root_ptr, NODE_HASH =>\%graph_structure_hash};
+};
+    
+
 #### API functions #############
 
 ##
@@ -561,16 +715,70 @@ sub get_request_edge_latencies_given_global_id {
     my $global_id = shift;
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-    my @local_info = split(/,/, $global_id_to_local_id_hash->{$_});
+    my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
     my $graph = $self->$_get_local_id_indexed_request($local_info[0],
                                                       $local_info[1]);
 
     my %node_name_hash;
-    $self->$_parse_nodes($graph, \%node_name_hash);
+    parse_nodes_from_string($graph, 1, \%node_name_hash);
     my $edge_latency_hash = $self->$_obtain_graph_edge_latencies($graph, \%node_name_hash);
 
     return $edge_latency_hash;
 }
-    
 
+
+## 
+# Takes as input two global IDs and matches their nodes in a depth first
+# manner.  It returns The names of the nodes (w/o the semantic label) that match
+#
+# @note: This function assumes that the graph edges specified in the DOT graph
+# are ALREADY in depth-first order.
+#
+# @param global_id1: Global ID of the first graph
+# @param global_id2: Global ID of the second graph
+#
+# @return An array of node names that matched in the two graph, ordered by a depth-first
+# traversal w/children of a given node traversed in alphatical order.
+##
+sub match_graphs {
+    
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $global_id1 = shift;
+    my $global_id2 = shift;
+
+    # Get the local IDs for the global IDs
+    my $global_id_to_local_id_hash = $self->{GLOBAL_ID_LOCAL_ID_HASH};
+    my @local_info1 = split(/,/, $global_id_to_local_id_hash->{$global_id1});
+    my @local_info2 = split(/,/, $global_id_to_local_id_hash->{$global_id2});
+
+    # Retrieve graphs
+    my $graph1 = $self->$_get_local_id_indexed_request($local_info1[0],
+                                                       $local_info1[1]);
+    my $graph2 = $self->$_get_local_id_indexed_request($local_info2[0],
+                                                       $local_info2[1]);
+
+    # Parse node names
+    my %graph1_node_name_hash;
+    parse_nodes_from_string($graph1, 0, \%graph1_node_name_hash);
+    my %graph2_node_name_hash;
+    parse_nodes_from_string($graph2, 0, \%graph2_node_name_hash);
+
+    my $graph1_structure = $self->$_build_graph_structure($graph1, \%graph1_node_name_hash);
+    my $graph2_structure = $self->$_build_graph_structure($graph2, \%graph2_node_name_hash);
+
+    # Find mathcing nodes
+    my @matching_nodes;
+    $self->$_match_nodes($graph1_structure->{ROOT},
+                         $graph2_structure->{ROOT},
+                         $graph1_structure->{NODE_HASH},
+                         $graph2_structure->{NODE_HASH},
+                         \@matching_nodes);
+
+
+    return \@matching_nodes;
+}
+
+    
 1;
