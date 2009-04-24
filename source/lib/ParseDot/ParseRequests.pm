@@ -54,7 +54,7 @@ package ParseRequests;
 use strict;
 use warnings;
 use Test::Harness::Assert;
-use ParseDot::DotHelper;
+use ParseDot::DotHelper qw[parse_nodes_from_file];
 
 
 # Global variables ########################
@@ -69,7 +69,6 @@ use ParseDot::DotHelper;
 #
 # @param $self: The object-container.
 #
-
 ##
 my $_print_ordered_edges = sub {
     my $self = shift;
@@ -536,7 +535,7 @@ my $_handle_requests = sub {
         # Skip the Begin Digraph { line
         $_ = <$snapshot_fh>;
 
-        parse_nodes_from_file($snapshot_fh, 1, \%node_name_hash);
+        DotHelper::parse_nodes_from_file($snapshot_fh, 1, \%node_name_hash);
         $self->$_handle_edges($snapshot_fh, \%node_name_hash, \%req_edge_latency_hash,
                              $request_latency, $snapshot);
 

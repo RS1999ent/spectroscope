@@ -15,6 +15,10 @@
 % If there is no data for the given edge, no information for the edge
 % will be computed.
 %
+% Before comparing edge latency distributions, this script 'smooths' the input
+% edge latencies by dividing by 1000 to convert to milliseconds and then
+% rounding to the nearest integer
+%
 % @param s0_edge_latencies: Edge latencies from the zeroth
 %        snapshot.  This is in MATLAB sparse file format.  Format is:
 %        <row num> <col num> <edge latency>
@@ -98,8 +102,9 @@ function [] = compare_edges(s0_file, s1_file, output_file)
             continue;
         end
           
-        s0_edge_latencies_smoothed = floor(s0_edge_latencies/1000);
-        s1_edge_latencies_smoothed = floor(s1_edge_latencies/1000);
+
+        s0_edge_latencies_smoothed = round(s0_edge_latencies/1000);
+        s1_edge_latencies_smoothed = round(s1_edge_latencies/1000);
         [h, p] = kstest2(s0_edge_latencies_smoothed, s1_edge_latencies_smoothed, .05, 'smaller');
         
         fprintf(outfid, '%d %d %f %3.2f %3.2f %3.2f %3.2f\n', ...

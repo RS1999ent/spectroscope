@@ -10,9 +10,8 @@ package PrintRequests;
 use strict;
 use warnings;
 use Test::Harness::Assert;
-use List::Util qw[min];
 use diagnostics;
-use ParseDot::DotHelper;
+use ParseDot::DotHelper qw[parse_nodes_from_string parse_nodes_from_file];
 
 
 #### Private functions #########
@@ -205,7 +204,7 @@ my $_overlay_edge_info = sub {
     my $edge_num_to_edge_name_hash = shift;
 
     my %node_name_hash;
-    parse_nodes_from_file($request, 1, \%node_name_hash);
+    DotHelper::parse_nodes_from_string($request, 1, \%node_name_hash);
 
     my @mod_graph_array = split(/\n/, $request);
 
@@ -218,7 +217,7 @@ my $_overlay_edge_info = sub {
         $color = ($edge_info_hash->{$key}->{REJECT_NULL} == 1)?"red":"black";
 
         # Print info for this edge; round average and stddev of latency to nearest integer
-        my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %d / %d\\n   s: %d / %d\"\]",
+        my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
                                      $color, 
                                      $edge_info_hash->{$key}->{P_VALUE}, 
                                      int($edge_info_hash->{$key}->{AVG_LATENCIES}->[0] + .5),
@@ -243,7 +242,7 @@ my $_overlay_edge_info = sub {
                         print "$src_node_name->$dest_node_name\n";
                         print "$edge_name\n\n";
                     }
-     
+                print "$src_node_name->$dest_node_name\n";
                 if("$src_node_name->$dest_node_name" eq $edge_name) {
 
                     $line =~ s/\[.*\]/$edge_info_line/g;
@@ -253,7 +252,10 @@ my $_overlay_edge_info = sub {
                 }
             }
         }
-        assert($found == 1);
+        if($found == 0) {
+            print "$edge_name\n";
+            assert(0);
+        }
     }
 
     my $mod_graph = join("\n", @mod_graph_array);
@@ -720,7 +722,7 @@ sub get_request_edge_latencies_given_global_id {
                                                       $local_info[1]);
 
     my %node_name_hash;
-    parse_nodes_from_string($graph, 1, \%node_name_hash);
+    DotHelper::parse_nodes_from_string($graph, 1, \%node_name_hash);
     my $edge_latency_hash = $self->$_obtain_graph_edge_latencies($graph, \%node_name_hash);
 
     return $edge_latency_hash;
@@ -761,9 +763,9 @@ sub match_graphs {
 
     # Parse node names
     my %graph1_node_name_hash;
-    parse_nodes_from_string($graph1, 0, \%graph1_node_name_hash);
+    DotHelper::parse_nodes_from_string($graph1, 0, \%graph1_node_name_hash);
     my %graph2_node_name_hash;
-    parse_nodes_from_string($graph2, 0, \%graph2_node_name_hash);
+    DotHelper::parse_nodes_from_string($graph2, 0, \%graph2_node_name_hash);
 
     my $graph1_structure = $self->$_build_graph_structure($graph1, \%graph1_node_name_hash);
     my $graph2_structure = $self->$_build_graph_structure($graph2, \%graph2_node_name_hash);

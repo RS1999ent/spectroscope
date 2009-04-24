@@ -259,7 +259,7 @@ my $_compare_edges = sub {
 
     system("matlab -nojvm -nosplash -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"".
            "|| matlab -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"") == 0
-           or die ("Could not run Matlagb compare_edges script\n");
+           or die ("Could not run Matlab compare_edges script\n");
 
     chdir $curr_dir;
 };
@@ -406,8 +406,8 @@ my $_compute_cluster_info = sub {
     my $graph_info = $self->{PRINT_GRAPHS_CLASS};
     my %cluster_info_hash;
 
-    foreach my $key (sort keys %$cluster_assignment_hash) {
-        print "Processing statistics for Cluster: $key...\n";
+    foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
+        print "Processing statistics for Cluster $key...\n";
 
         my @input_vec_ids = split(/,/, $cluster_assignment_hash->{$key});
 

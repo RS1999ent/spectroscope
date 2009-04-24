@@ -11,9 +11,9 @@ use strict;
 use warnings;
 use Test::Harness::Assert;
 use diagnostics;
-use base 'Exporter';
+require Exporter;
 
-our @EXPORT = qw(parse_nodes_from_string parse_nodes_form_file);
+our @EXPORT_OK= qw(parse_nodes_from_string parse_nodes_from_file);
 
 
 ##
@@ -78,7 +78,7 @@ sub parse_nodes_from_file {
 
 		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
 
-			# Add the Node label to the alphabet hash 
+			# Add the Node name to the alphabet hash 
             if (defined $4 && $include_label) { 
                 $node_name = $3 . "_" . $4; 
             } else {
