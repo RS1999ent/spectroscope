@@ -1,5 +1,6 @@
 #! /usr/bin/perl -w
 
+# $cmuPDL: PrintRequests.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -238,13 +239,7 @@ my $_overlay_edge_info = sub {
                 my $src_node_name = $node_name_hash{$src_node_id};
                 my $dest_node_name = $node_name_hash{$dest_node_id};
                 
-                    if ($line =~ m/dashed/) {
-                        print "$src_node_name->$dest_node_name\n";
-                        print "$edge_name\n\n";
-                    }
-                print "$src_node_name->$dest_node_name\n";
                 if("$src_node_name->$dest_node_name" eq $edge_name) {
-
                     $line =~ s/\[.*\]/$edge_info_line/g;
                     $mod_graph_array[$i] = $line;
                     $found = 1;

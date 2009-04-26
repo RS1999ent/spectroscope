@@ -1,5 +1,6 @@
 #! /usr/bin/perl -w
 
+# $cmuPDL: DotHelper.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory

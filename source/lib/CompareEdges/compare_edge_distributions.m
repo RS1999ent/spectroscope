@@ -1,3 +1,4 @@
+% $cmuPDL: compare_edge_distributions.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edges passed into it and returns whether they are the same.  The

@@ -1,5 +1,6 @@
 #! /usr/bin/perl -w
 
+# $cmuPDL: ParseClusteringResults.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -782,98 +783,6 @@ sub print_clusters {
     close($ranked_clusters_graph_fh);
     
 }
-
-
-##
-# Prints ranked cluster information.  Two files are printed.
-# The ranked_clusters_by_<metric>.dat, will contain information
-# about each cluster.  The first ranked cluster is printed first
-# on the first line and so on.  The second file contains
-# DOT graphs of the cluster representatives of each cluster
-# ranked appropriately.
-#
-# @param self: The object-container
-##
-#sub print_clusters {
-#    my $self = shift;
-#    
-#    my $ranked_cluster_info_file;
-#    my $ranked_cluster_dot_file;
-#    
-#    # If the necessary input files have yet been
-#    # loaded in, do so now
-#    #
-#    if($self->{INPUT_HASHES_LOADED} == 0) {
-#       $self->$_load_files_into_hashes();
-#   }
-#    
-#    # If necessary information about each cluster has
-#    # not yet been obtained, do so now
-#    if (!defined $self->{CLUSTER_INFO_HASH}) {
-#        $self->$_load_cluster_info_hash();
-#    }
-#    
-#    # Prep for printing clusters
-#    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
-#    
-#    open(my $ranked_clusters_fh, 
-#         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat") 
-#        or die ("Could not open ranked clusters file\n");
-#    
-#    open(my $ranked_clusters_dot_fh,
-#        ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot");
-#    
-#    my $sort_routine;
-#    if($self->{RANK_FORMAT} =~ /req_difference/) {
-#        $sort_routine = $_sort_by_difference_in_number_of_reqs;
-#    }
-#    
-#    # Print out cluster information
-#    my $rank = 1;
-#    for my $key (sort {    
-#        my @a_array = split(/,/, $cluster_info_hash->{$a});
-#        my @b_array = split(/,/, $cluster_info_hash->{$b});
-#        
-#        my $a_s0_reqs = $a_array[0];
-#        my $a_s1_reqs = $a_array[1];
-#        my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
-#        
-#        my $b_s0_reqs = $b_array[0];
-#        my $b_s1_reqs = $b_array[1];
-#        my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
-#    
-#        if($a_rank > $b_rank) {
-#            return -1;
-#        }
-#        if($a_rank < $b_rank) {
-#            return 1;
-#        }
-#
-#        # If the ranks are equal, order based on
-#        # number of requests from snapshot 1
-#        if($a_s1_reqs > $b_s1_reqs) {
-#            return -1;
-#        }
-#        if($a_s1_reqs < $b_s1_reqs) {
-#            return 1;
-#        }
-#
-#        return 0;
-#    } keys %$cluster_info_hash) {
-#
-#        # Print information about the cluster
-#        my @cluster_info = split(/,/, $cluster_info_hash->{$key});
-#        printf $ranked_clusters_fh "%5d %5d ", $rank, $key;
-#        printf $ranked_clusters_fh "%5d %5d %3.2f %3.2f\n", @cluster_info;
-#        $rank++;
-#        
-#        # Print a dot graph representing this cluster
-#        $self->$_print_graph($key, $ranked_clusters_dot_fh);
-#    }
-#
-#    close($ranked_clusters_fh);
-#    close($ranked_clusters_dot_fh);
-#}
 
 
 1;    

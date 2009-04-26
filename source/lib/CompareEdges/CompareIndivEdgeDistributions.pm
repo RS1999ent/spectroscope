@@ -1,7 +1,6 @@
 #! /usr/bin/perl -w
 
-# cmuPDL: CompareIndivEdgeDistributions.pm
-
+# $cmuPDL: CompareIndivEdgeDistributions.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # This perl module serves as a wrapper for a matlab script
 # that compares the latency distributions of various edge.

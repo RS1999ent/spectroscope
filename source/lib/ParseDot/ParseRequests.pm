@@ -1,7 +1,6 @@
 #! /usr/bin/perl -w
 
-# cmuPDL: ConvertRequests.pm, $
-
+# $cmuPDL: ParseRequests.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  It also
 # extracts edge latencies and places them in their own files.  The specific files

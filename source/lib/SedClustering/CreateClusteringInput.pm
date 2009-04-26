@@ -1,7 +1,6 @@
 #!/usr/bin/perl -w
 
-# cmuPDL: CreateClusteringInput.pm, v$
-
+# $cmuPDL: CreateClusteringInput.pm,v 1.64 2009/03/13 19:39:19 source Exp $
 ##
 # @author Raja Sambasivan
 #
