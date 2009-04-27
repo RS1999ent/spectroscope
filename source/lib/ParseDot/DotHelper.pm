@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: DotHelper.pm,v 1.3 2009/04/26 23:48:44 source Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -45,7 +45,7 @@ sub parse_nodes_from_string {
             $node_name = $3;
         }
 
-        my $node_id = $1.$2;
+        my $node_id = "$1.$2";
         $node_name_hash->{$node_id} = $node_name;
     }
 }

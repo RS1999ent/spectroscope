@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.5 2009/04/26 23:48:44 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -744,14 +744,10 @@ sub print_clusters {
     
     my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
     
+    # First print the text file
     open(my $ranked_clusters_fh, 
          ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat")
         or die ("Could not open ranked clusters file: $!\n");
-    
-    open(my $ranked_clusters_graph_fh,
-         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
-        or die("Could not open ranked clusters file\n");
-    
     
     # Print header to ranked_cluster_fh
     printf $ranked_clusters_fh "%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s\n",
@@ -766,23 +762,66 @@ sub print_clusters {
         my $freqs = $this_cluster_info_hash->{FREQUENCIES};
         my $avg_response_times = $this_cluster_info_hash->{AVG_RESPONSE_TIMES};
         my $stddevs = $this_cluster_info_hash->{STDDEVS};
-        my $edge_info = $this_cluster_info_hash->{EDGE_INFO};
         
         # Write rank cluster_id s0_frequency s1_frequency s0_avg_lat s0_stddev s1_avg_lat s1_stddev
         printf $ranked_clusters_fh "%-15d %-15d %-15d %-15d %-12.3f %-12.3f %-12.3f %-12.3f\n",
         $rank, $key, $freqs->[0], $freqs->[1], $avg_response_times->[0], $stddevs->[0],
         $avg_response_times->[1], $stddevs->[1];
 
-        # Print a visual representation of the cluster
-        $self->$_print_graph($key, $edge_info, $ranked_clusters_graph_fh);
-        
         $rank++;
     }
-    
     close ($ranked_clusters_fh);
+
+    
+    # Now print the graph representation in ascending Cluster ID order
+    open(my $ranked_clusters_graph_fh,
+         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
+        or die("Could not open ranked clusters file\n");
+        
+    for my $key (sort {$a <=> $b} keys %$cluster_info_hash) {
+        my $this_cluster_info_hash = $cluster_info_hash->{$key};
+        
+        my $edge_info = $this_cluster_info_hash->{EDGE_INFO};
+        $self->$_print_graph($key, $edge_info, $ranked_clusters_graph_fh);
+    }
     close($ranked_clusters_graph_fh);
     
 }
+
+
+##
+# Returns the cluster representative of a cluster, given its ID
+#
+# @param cluster_id: [1...N]
+#
+# @return the global ID of the cluster representative
+#
+# @note: This function is pretty hacked up; should make it more formal
+# $self->{CLUSTER_HASH} should contain the global_id of the cluster rep,
+# or if the cluster representative is not a traditional request-flow graph,
+# a pointer to a string representative of it.  This functio should return
+# a string containing the representative
+##
+sub get_global_id_of_cluster_rep {
+
+    assert(scalar(@_) == 2);
+    
+    my $self = shift;
+    my $cluster_id = shift;
+
+    if($self->{INPUT_HASHES_LOADED} == 0) {
+        $self->$_load_files_into_hashes();
+    }
+
+    my $cluster_hash = $self->{CLUSTER_HASH};
+    my $input_vec_to_global_ids_hash = $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
+    my @input_vecs = split(/,/, $cluster_hash->{$cluster_id});
+    my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
+
+    return $global_ids[0];
+
+}
+    
 
 
 1;    
