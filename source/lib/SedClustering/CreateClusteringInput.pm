@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.4 2009/04/26 23:48:44 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -67,8 +67,8 @@ my $_print_alphabet_mapping = sub {
 
     my $alphabet_hash = $self->{ALPHABET_HASH};
 	
-	foreach my $node_name (keys %$alphabet_hash) {
-		my $alphabet_val = chr($alphabet_hash->{$node_name});
+	foreach my $node_name (sort {$alphabet_hash->{$a} <=> $alphabet_hash->{$b}} keys %$alphabet_hash) {
+		my $alphabet_val = $alphabet_hash->{$node_name};
 		print $alphabet_mapping_fh "$alphabet_val -> $node_name\n";
 	}
 
