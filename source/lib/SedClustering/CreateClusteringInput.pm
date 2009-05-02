@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.4 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.5 2009/04/30 09:16:47 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -404,7 +404,7 @@ sub new {
     # Hash table describing mapping between characters and node names
     $self->{ALPHABET_HASH} = {};
     # The first valid alphabet counter
-    $self->{ALPHABET_COUNTER} = 33;
+    $self->{ALPHABET_COUNTER} = 1;
 
     # Specifies the distance between requests for clustering
     $self->{DISTANCE_MATRIX_FILE} = "$output_dir/distance_matrix.dat";
