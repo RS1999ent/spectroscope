@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.7 2009/04/27 20:14:44 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.8 2009/05/03 01:01:33 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -380,30 +380,28 @@ my $_build_graph_structure = sub {
 # for this class to work.
 ##
 sub new {
-    my $proto = shift;
 
-    my $global_id_to_local_id_file = shift;
-    my $global_req_edge_latencies_file = shift;
-    my $snapshot0_file = shift;
-    my $snapshot0_index = shift;
+    assert(scalar(@_) == 3 || scalar(@_) == 4);
 
-    my $snapshot1_file;
-    my $snapshot1_index;
-    if ($#_ == 1) {
-        $snapshot1_file = shift;
-        $snapshot1_index = shift;
+    my $proto, my $convert_reqs_dir, my $snapshot0_file, my $snapshot0_index;
+    my $snapshot1_file, my $snapshot1_index;
+    
+    if(scalar(@_) == 3) {
+        ($proto, $convert_reqs_dir, $snapshot0_file) = @_;
+        $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
+    } else {
+        ($proto, $convert_reqs_dir, $snapshot0_file,
+         $snapshot1_file) = @_;
+        $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
+        $snapshot1_index = "$convert_reqs_dir/s1_request_index.dat";
     }
-     
-    # There should be no more input arguments
-    assert($#_ == -1);
-        
+         
     my $class = ref($proto) || $proto;
 
     my $self = {};
 
-    $self->{GLOBAL_ID_TO_LOCAL_ID_FILE} = $global_id_to_local_id_file;
-
-    $self->{REQ_EDGE_LATENCIES_FILE} = $global_req_edge_latencies_file;
+    $self->{GLOBAL_ID_TO_LOCAL_ID_FILE} = "$convert_reqs_dir/global_ids_to_local_ids.dat";
+    $self->{REQ_EDGE_LATENCIES_FILE} = "$convert_reqs_dir/global_req_edge_latencies.dat",
 
     $self->{SNAPSHOT0_FILE} = $snapshot0_file;
     $self->{SNAPSHOT0_INDEX_FILE} = $snapshot0_index;
@@ -412,8 +410,11 @@ sub new {
         $self->{SNAPSHOT1_FILE} = $snapshot1_file;
         assert(defined $snapshot1_index);
         $self->{SNAPSHOT1_INDEX_FILE} = $snapshot1_index;
+    } else {
+        $self->{SNAPSHOT1_FILE} = undef;
+        $self->{SNAPSHOT1_INDEX} = undef;
     }
-    
+
     $self->{SNAPSHOT0_INDEX_HASH} = undef;
     $self->{SNAPSHOT1_INDEX_HASH} = undef;
     $self->{GLOBAL_ID_TO_LOCAL_ID_HASH} = undef;
@@ -437,7 +438,7 @@ sub new {
 sub print_global_id_indexed_request {
     
     assert(scalar(@_) == 3 || scalar(@_) == 5);
-    
+
     my $self, my $global_id, my $output_fh;
     my $edge_info, my $edge_num_to_name_hash;
     if (scalar(@_) == 3) {
@@ -446,6 +447,12 @@ sub print_global_id_indexed_request {
         ($self, $global_id, $output_fh, $edge_info, $edge_num_to_name_hash) = @_;
     }
 
+    # Make sure all input files are loaded into classes
+    if($self->{HASHES_LOADED} == 0) {
+        $self->$_load_input_files_into_hashes();
+        assert($self->{HASHES_LOADED} == 1);
+    }
+    
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
     my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
     my $request = $self->$_get_local_id_indexed_request($local_info[0], $local_info[1]);

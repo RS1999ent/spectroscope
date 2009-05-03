@@ -1,11 +1,11 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.2 2009/04/13 21:08:00 source Exp $
+# $cmuPDL: spectroscope.pl,v 1.3 2009/04/26 23:48:44 source Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
 #
-# Type ./spectroscope -h or ./spectroscope for help
+# Type perl spectroscope -h or ./spectroscope for help
 ##
 
 
@@ -144,19 +144,15 @@ if ($g_pass_through) {
 #                           "$g_convert_reqs_output_dir/edge_distribution_comparisons.dat");
                            
 
-my $g_print_requests = new PrintRequests("$g_convert_reqs_output_dir/global_ids_to_local_ids.dat",
-                                         "g_convert_reqs_output_dir/global_req_edge_latencies.dat",
+my $g_print_requests = new PrintRequests("$g_convert_reqs_output_dir",
                                          $g_snapshot0_file,
-                                         "$g_convert_reqs_output_dir/s0_request_index.dat",
-                                         $g_snapshot1_file,
-                                         "$g_convert_reqs_output_dir/s1_request_index.dat");
+                                         $g_snapshot1_file);
 
-my $g_parse_clustering_results = new ParseClusteringResults("$g_convert_reqs_output_dir/clusters.dat",
-                                                            "$g_convert_reqs_output_dir/input_vector.dat",
-                                                            "$g_convert_reqs_output_dir/input_vec_to_global_ids.dat",
+
+my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
                                                             $g_cluster_output_ranking,
                                                             $g_print_requests,
-                                                            "$g_output_dir");
+                                                            $g_output_dir);
 
 print "Initializng parse clustering results\n";
 $g_parse_clustering_results->print_clusters();

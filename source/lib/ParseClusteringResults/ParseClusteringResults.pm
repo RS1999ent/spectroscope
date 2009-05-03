@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.6 2009/04/27 20:14:44 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.7 2009/05/03 01:01:33 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -651,15 +651,11 @@ my $_sort_clusters_wrapper = sub {
 # should be placed
 ##
 sub new {
-    my $proto = shift;
 
-    my $clusters_file = shift;
-    my $input_vector_file = shift;
-    my $input_vec_to_global_ids_file = shift;
+    assert(scalar(@_) == 5);
 
-    my $rank_format = shift;
-    my $print_graphs_class = shift;
-    my $output_dir = shift;
+    my ($proto, $convert_data_dir, $rank_format, 
+        $print_graphs_class, $output_dir) = @_;
 
     assert ($rank_format =~ m/req_difference/);
     # Will add in the following later.
@@ -669,9 +665,9 @@ sub new {
     my $class = ref($proto) || $proto;
     my $self = {};
 
-    $self->{CLUSTERS_FILE} = $clusters_file;
-    $self->{INPUT_VECTOR_FILE} = $input_vector_file;
-    $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = $input_vec_to_global_ids_file;
+    $self->{CLUSTERS_FILE} = "$convert_data_dir/clusters.dat",
+    $self->{INPUT_VECTOR_FILE} = "$convert_data_dir/input_vector.dat",
+    $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$convert_data_dir/input_vec_to_global_ids.dat",;
     $self->{RANK_FORMAT} = $rank_format;
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
