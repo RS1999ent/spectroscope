@@ -1,4 +1,4 @@
-% $cmuPDL: compare_edges.m,v 1.4 2009/04/26 23:48:44 source Exp $
+% $cmuPDL: compare_edges.m,v 1.5 2009/05/03 10:31:59 source Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edge latencies passed into it and returns whether they are the same.  The
@@ -50,7 +50,7 @@ function [] = compare_edges(s0_file, s1_file, output_file)
         if( i <= size(s0_data, 1))
             s0_edge_latencies = s0_data(i, :);
             s0_edge_latencies = full(s0_edge_latencies);
-            %s0_edge_latencies = s0_edge_latencies(find(s0_edge_latencies ~= 0));
+            s0_edge_latencies = s0_edge_latencies(find(s0_edge_latencies ~= 0));
         else 
             s0_edge_latencies = [];
         end
@@ -58,13 +58,16 @@ function [] = compare_edges(s0_file, s1_file, output_file)
         if (i <= size(s1_data, 1)),
             s1_edge_latencies = s1_data(i, :); 
             s1_edge_latencies = full(s1_edge_latencies);
-            %s1_edge_latencies = s1_edge_latencies(find(s1_edge_latencies ~= 0));
+            s1_edge_latencies = s1_edge_latencies(find(s1_edge_latencies ~= 0));
         else 
             s1_edge_latencies = [];
         end
         
         if(isempty(s0_edge_latencies) && isempty(s1_edge_latencies)),
-           % This edge was not seen at all in both datasets; ignore it
+          % This must be an RPC edge
+          fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
+                  i, 0, 0, 0, 0, 0, 0);
+
            continue;
         end
         
