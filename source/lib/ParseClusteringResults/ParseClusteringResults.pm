@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.7 2009/05/03 01:01:33 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.8 2009/05/03 02:19:28 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -20,7 +20,13 @@ use Cwd;
 use Test::Harness::Assert;
 use GD::Graph::boxplot;
 use Statistics::Descriptive;
+use List::Util qw[max];
 use diagnostics;
+
+#### Global constants #############
+
+# Import value of DEBUG if defined
+no define DEBUG =>;
 
 
 #### Private functions ############
@@ -135,22 +141,29 @@ my $_find_mean_and_stddev = sub {
 #
 # @param self: The object containe
 # @param edge_name: The name of the edge
+# @param edge_row_num_hash: A pointer to a hash that
+# maps edge names to row numbers.  
+# @param reverse_edge_row_num_hash: A pointer to a hash
+# that maps row numbers to edge names
 #
 # @return: The row number to use for this edge
 ##
 my $_get_edge_row_num = sub {
-    assert(scalar(@_) == 2);
+    assert(scalar(@_) == 5);
 
     my $self = shift;
     my $edge_name = shift;
-    
-    my $edge_row_num_hash = $self->{EDGE_ROW_NUM_HASH};
-    my $reverse_edge_row_num_hash = $self->{REVERSE_EDGE_ROW_NUM_HASH};
+    my $edge_row_num_hash = shift;
+    my $reverse_edge_row_num_hash = shift;
+    my $current_max_row_num = shift;
 
     if(!defined $edge_row_num_hash->{$edge_name}) {
-        $edge_row_num_hash->{$edge_name} = $self->{EDGE_ROW_COUNTER};
-        $reverse_edge_row_num_hash->{$self->{EDGE_ROW_COUNTER}} = $edge_name;
-        $self->{EDGE_ROW_COUNTER}++;
+        my $row_num = $current_max_row_num + 1;
+        
+        if (DEBUG) {print "get_edge_row_num(): $edge_name $row_num\n"};
+
+        $edge_row_num_hash->{$edge_name} = $row_num;
+        $reverse_edge_row_num_hash->{$row_num} = $edge_name;
     }
 
     return $edge_row_num_hash->{$edge_name};
@@ -189,15 +202,32 @@ my $_get_edge_col_num = sub {
     
 
 ##
-# Creates edge comparison files
+# Creates files that Matlab can use to compare the distribution
+# of edge latencies between edges that come from snapshot0 and
+# edges that come from snapshot1.  These files are in matlab
+# sparse matrix format.
+#
+# @param self: The object container
+# @param global_ids_ptr: A pointer to the requests for which
+#  constituent edges should be compared
+# @param s0_edge_file: This file will be populated with a 
+# sparce matrix of snapshot0 edge latencies 
+# @param s1_edge_file: This file will be populated with a
+# sparse matrix of snapshot1 edge latencies
+# @param edge_name_to_row_num_hash_ptr: This will be populated w/
+# data that maps edge names to row numbers in the sparse matrices
+# @param row_num_to_edge_name_hash_ptr: This will be populated w/
+# data that maps row numbers back to edge names.
 ##
 my $_create_edge_comparison_files = sub {
-    assert(scalar(@_) == 4);
+    assert(scalar(@_) == 6);
 
     my $self = shift;
     my $global_ids_ptr = shift;
     my $s0_edge_file = shift;
     my $s1_edge_file = shift;
+    my $edge_name_to_row_num_hash_ptr = shift;
+    my $row_num_to_edge_name_hash_ptr = shift;
 
     my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
 
@@ -207,6 +237,7 @@ my $_create_edge_comparison_files = sub {
     open(my $s1_edge_fh, ">$s1_edge_file") or die $!;
     my @fhs = ($s0_edge_fh, $s1_edge_fh);
 
+    my $max_row_num = 0;
     foreach (@$global_ids_ptr) {
         my @global_id = ($_);
 
@@ -214,8 +245,11 @@ my $_create_edge_comparison_files = sub {
         my $edge_info = $print_graphs->get_request_edge_latencies_given_global_id($global_id[0]);
         
         foreach my $key (keys %$edge_info) {
-            my $row_num = $self->$_get_edge_row_num($key);
+            my $row_num = $self->$_get_edge_row_num($key, $edge_name_to_row_num_hash_ptr, 
+                                                    $row_num_to_edge_name_hash_ptr, $max_row_num);
+            $max_row_num = max($row_num, $max_row_num);
             my $edge_latencies = $edge_info->{$key};
+
 
             foreach(@$edge_latencies) {
                 my $col_num = $self->$_get_edge_col_num($key,\%col_num_hash);
@@ -270,27 +304,32 @@ my $_compare_edges = sub {
 # Reads in a file of edge comparisons of the form: 
 # <edge row number> <changed> <p-value> <avg. latency s0> stddev s0> <avg. latency s1> <stddev s1>
 # and inserts this info into an edge_info_hash, which is of the form
-# edge_info_hash{edge_row_num} -> { CHANGED,
-#                                   AVG_LATENCIES,
-#                                   STDDEVS };
+
+# edge_info_hash{edge_name} = { REJECT_NULL => <value>,
+#                               P_VALUE => <value>,
+#                               AVG_LATENCIES => \@array,
+#                               STDDEVS => \@array}
+# where edge_name is "src_node_name->dest_node_name"
 #
 # @param self: The object container
 # @param edge_comparisons_file: The file containing edge comparisons
+# @param row_num_to_edge_name_hash: Maps row numbers in the text file
+# to edge names.
 #
 # @return: The edge_info_hash.
 ##                             
 my $_load_edge_info_hash = sub {
-    assert(scalar(@_) == 2);
+    assert(scalar(@_) == 3);
     
     my $self = shift;
     my $edge_comparisons_file = shift;
+    my $row_num_to_edge_name_hash = shift;
 
     my %edge_info_hash;
-    my $reverse_edge_row_num_hash = $self->{REVERSE_EDGE_ROW_NUM_HASH};
     
     open(my $edge_comparisons_fh, "<$edge_comparisons_file")
         or die ("Could not open $edge_comparisons_file: $!\n");
-    
+
     while (<$edge_comparisons_fh>) {
         # This regexp must match the output specified by compare edges
         if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+)/) {
@@ -300,9 +339,9 @@ my $_load_edge_info_hash = sub {
             my @avg_latencies = ($4, $6);
             my @stddevs = ($5, $7);
             
-            assert(defined $reverse_edge_row_num_hash->{$edge_row_num});
-            
-            $edge_info_hash{$edge_row_num} = { REJECT_NULL => $reject_null,
+            my $edge_name = $row_num_to_edge_name_hash->{$edge_row_num};
+            assert(defined $edge_name);
+            $edge_info_hash{$edge_name} = { REJECT_NULL => $reject_null,
                                                P_VALUE => $p_value,
                                                AVG_LATENCIES => \@avg_latencies,
                                                STDDEVS => \@stddevs };
@@ -320,6 +359,19 @@ my $_load_edge_info_hash = sub {
 
 ##
 # Computes information about edges seen for a set of global IDs
+# 
+# @param self: The object container
+# @param global_ids_ptr: A pointer to an array of global ids
+# @param cluster_id: The cluster to which the global IDs belong
+#
+# @return a pointer to a hash of information about each edge in the
+# cluster.  This hashed is structured as follows: 
+#
+# edge_name = { REJECT_NULL => <value>,
+#               P_VALUE => <value>,
+#               AVG_LATENCIES => \@array,
+#               STDDEVS => \@array}
+# where edge_name is "src_node_name->dest_node_name"
 ##
 my $_compute_edge_info = sub {
     assert(scalar(@_) == 3);
@@ -333,6 +385,9 @@ my $_compute_edge_info = sub {
 
     my $output_dir = $self->{INTERIM_OUTPUT_DIR};
 
+    my %edge_name_to_row_num_hash;
+    my %row_num_to_edge_name_hash;
+
     # Make sure the output directory exists
     system("mkdir -p $output_dir");
 
@@ -343,10 +398,11 @@ my $_compute_edge_info = sub {
     my $comparison_results_file = "$output_dir/$cluster_id" .
                                    "_comparisons.dat";
     
-    $self->$_create_edge_comparison_files($global_ids_ptr, $s0_edge_file, $s1_edge_file);
+    $self->$_create_edge_comparison_files($global_ids_ptr, $s0_edge_file, $s1_edge_file,
+                                          \%edge_name_to_row_num_hash, \%row_num_to_edge_name_hash);
     $self->$_compare_edges($s0_edge_file, $s1_edge_file, 
                            $comparison_results_file);
-    my $edge_info = $self->$_load_edge_info_hash($comparison_results_file);
+    my $edge_info = $self->$_load_edge_info_hash($comparison_results_file, \%row_num_to_edge_name_hash);
 
     return $edge_info;
 };
@@ -551,9 +607,8 @@ my $_print_graph = sub {
     # Print the graph
     $print_graphs_class->print_global_id_indexed_request($global_ids[0], 
                                                          $out_fh,
-                                                         $edge_info, 
-                                                         $self->{REVERSE_EDGE_ROW_NUM_HASH});
-                                                         
+                                                         $edge_info);
+
 };
 
 
@@ -679,12 +734,7 @@ sub new {
     $self->{INPUT_HASHES_LOADED} = 0;
 
     # These hashes are computed by the cluster
-    $self->{EDGE_ROW_NUM_HASH} = { };
-    $self->{REVERSE_EDGE_ROW_NUM_HASH} = { };
     $self->{CLUSTER_INFO_HASH} = undef;
-
-    # Counter maintained by this cluster
-    $self->{EDGE_ROW_COUNTER} = 1;
 
     # Some derived outputs
     $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
@@ -713,11 +763,7 @@ sub clear {
     undef $self->{INPUT_HASHES_LOADED} = 0;
 
     # undef hashes computed by this cluster
-    $self->{EDGE_ROW_NUM_HASH} = {};
-    $self->{REVERSE_EDGE_ROW_NUM_HASH} = {};
     undef $self->{CLUSTER_INFO_HASH};
-
-    $self->{EDGE_ROW_COUNTER} = 1;
 }
 
 

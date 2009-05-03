@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.3 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: spectroscope.pl,v 1.4 2009/05/03 02:19:29 source Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -15,10 +15,11 @@ use strict;
 use warnings;
 use diagnostics;
 use Test::Harness::Assert;
-
 use Getopt::Long;
 
 use lib '../lib';
+use define DEBUG => 0;
+
 use SedClustering::CreateClusteringInput;
 use ParseDot::ParseRequests;
 use ParseDot::PrintRequests;

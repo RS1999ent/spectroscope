@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.8 2009/05/03 01:01:33 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.9 2009/05/03 02:19:29 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -15,6 +15,11 @@ use diagnostics;
 use Data::Dumper;
 
 use ParseDot::DotHelper qw[parse_nodes_from_string parse_nodes_from_file];
+
+#### Global Constants ##########
+
+# Import value of DEBUG if defined
+no define DEBUG =>;
 
 
 #### Private functions #########
@@ -187,81 +192,84 @@ my $_obtain_graph_edge_latencies = sub {
 # @param $edge_info_hash: A pointer to a hash containing information
 # about various edges.  The hash is constructed as follows: 
 #
-# edge_num => { REJECT_NULL = <value>,
-#             P_VALUE = <value>,
-#             AVG_LATENCIES = \@array,
-#             STDDEVS = \@array}
+# edge_name = { REJECT_NULL => <value>,
+#             P_VALUE => <value>,
+#             AVG_LATENCIES => \@array,
+#             STDDEVS => \@array}
 #
-# @param $edge_num_to_edge_name_hash: maps edge numbers used
-# as the key in the edge_info_hash to actual edge names
+# The edge name must be "source_node_name->dest_node_name"
 #
 # @return: A string representation of the graph w/the appropriate info
 # overlayed.
 ##
 my $_overlay_edge_info = sub {
-    assert(scalar(@_) == 4);
+    assert(scalar(@_) == 3);
 
     my $self = shift;
     my $request = shift;
     my $edge_info_hash = shift;
-    my $edge_num_to_edge_name_hash = shift;
 
     my %node_name_hash;
     DotHelper::parse_nodes_from_string($request, 1, \%node_name_hash);
-
+    
     my @mod_graph_array = split(/\n/, $request);
-
-    for my $key (keys %$edge_info_hash) {
-
-        my $edge_name = $edge_num_to_edge_name_hash->{$key};
-        assert(defined $edge_name);
-
-        my $color;
-        $color = ($edge_info_hash->{$key}->{REJECT_NULL} == 1)?"red":"black";
-
-        # Print info for this edge; round average and stddev of latency to nearest integer
-        my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
-                                     $color, 
-                                     $edge_info_hash->{$key}->{P_VALUE}, 
-                                     int($edge_info_hash->{$key}->{AVG_LATENCIES}->[0] + .5),
-                                     int($edge_info_hash->{$key}->{AVG_LATENCIES}->[1] + .5),
-                                     int($edge_info_hash->{$key}->{STDDEVS}->[0] + .5),
-                                     int($edge_info_hash->{$key}->{STDDEVS}->[1] + .5));
+    
+    # Iterate through edges of graph in the outer loop to implement "location-agnostic"
+    # edge comparisons.  Since the edge_info_hash has unique entries for each edge name,
+    # the same aggregate info might be overlayed on edges that occur multiple times
+    # in the request.
+    for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
+        my $line = $mod_graph_array[$i];
         
-        # Iterate through graph looking for this edge
-        my $found = 0;
-        for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
-            my $line = $mod_graph_array[$i];
+        if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) { #\[label=\"R: ([0-9\.]+) us\"\]/) {
+            
+            my $src_node_id = "$1.$2";
+            my $dest_node_id = "$3.$4";
+            
+            my $src_node_name = $node_name_hash{$src_node_id};
+            my $dest_node_name = $node_name_hash{$dest_node_id};
+            
+            my $found = 0;
+            for my $key (keys %$edge_info_hash) {
+                my $edge_name = $key;
 
-            if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) { #\[label=\"R: ([0-9\.]+) us\"\]/) {
+                if (DEBUG) {
+                    print "looking for: $src_node_name->$dest_node_name  $edge_name\n";
+                }
 
-                my $src_node_id = "$1.$2";
-                my $dest_node_id = "$3.$4";
-                
-                my $src_node_name = $node_name_hash{$src_node_id};
-                my $dest_node_name = $node_name_hash{$dest_node_id};
-                
                 if("$src_node_name->$dest_node_name" eq $edge_name) {
+                    
+                    my $color;
+                    $color = ($edge_info_hash->{$key}->{REJECT_NULL} == 1)?"red":"black";
+                    
+                    # Print info for this edge; round average and stddev of latency to nearest integer
+                    my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
+                                                 $color, 
+                                                 $edge_info_hash->{$key}->{P_VALUE}, 
+                                                 int($edge_info_hash->{$key}->{AVG_LATENCIES}->[0] + .5),
+                                                 int($edge_info_hash->{$key}->{AVG_LATENCIES}->[1] + .5),
+                                                 int($edge_info_hash->{$key}->{STDDEVS}->[0] + .5),
+                                                 int($edge_info_hash->{$key}->{STDDEVS}->[1] + .5));
+                    
                     $line =~ s/\[.*\]/$edge_info_line/g;
                     $mod_graph_array[$i] = $line;
                     $found = 1;
+
+                    if (DEBUG) {print "found: $edge_name\n"};o
                     last;
                 }
             }
+            if($found == 0) {
+                print "Request edge: $src_node_name->$dest_node_name not found!\n";
+                assert(0);
+            }
         }
-        if($found == 0) {
-            print "$edge_name\n";
-            assert(0);
-        }
-    }
-
+    }    
+    
     my $mod_graph = join("\n", @mod_graph_array);
 
     return $mod_graph;
 };
-
-
-
 
 
 ##
@@ -310,7 +318,7 @@ my $_sort_graph_structure_children = sub {
 #
 # @return a hash comprised of 
 #   { ROOT => Pointer to root node
-#     NODE_HASH => Hash of all nodes, indexed by ID}
+#     NOE_HASH => Hash of all nodes, indexed by ID}
 ##
 my $_build_graph_structure = sub {
     
@@ -432,19 +440,19 @@ sub new {
 # @param self: The object container
 # @param global_id: The global id of the request to print
 # @param output_fh: The output filehandle
-# @param edge_info: (OPTIONAL)Information to overlay on request
-# @param edge_num_to_name_hash: (OPTIONAL)Maps edge numbers to names
+# @param edge_info: (OPTIONAL)Information to overlay on request,
+# keyed by edge name ("src_node_name->$dest_node_name"
 ##
 sub print_global_id_indexed_request {
     
-    assert(scalar(@_) == 3 || scalar(@_) == 5);
+    assert(scalar(@_) == 2 || scalar(@_) == 4);
 
     my $self, my $global_id, my $output_fh;
-    my $edge_info, my $edge_num_to_name_hash;
-    if (scalar(@_) == 3) {
+    my $edge_info;
+    if (scalar(@_) == 2) {
         ($self, $global_id, $output_fh) = @_;
     } else {
-        ($self, $global_id, $output_fh, $edge_info, $edge_num_to_name_hash) = @_;
+        ($self, $global_id, $output_fh, $edge_info) = @_;
     }
 
     # Make sure all input files are loaded into classes
@@ -458,8 +466,8 @@ sub print_global_id_indexed_request {
     my $request = $self->$_get_local_id_indexed_request($local_info[0], $local_info[1]);
 
     my $modified_req;
-    if (defined $edge_info && defined $edge_num_to_name_hash) {
-        $modified_req = $self->$_overlay_edge_info($request, $edge_info, $edge_num_to_name_hash);
+    if (defined $edge_info) {
+        $modified_req = $self->$_overlay_edge_info($request, $edge_info);
     } else {
         $modified_req = $request;
     }
