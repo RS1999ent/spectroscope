@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.6 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.7 2009/04/27 20:14:44 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -341,16 +341,16 @@ my $_build_graph_structure = sub {
             if(!defined $graph_structure_hash{$dest_node_id}) {
                 my @children_array;
                 my %dest_node = (NAME => $dest_node_name,
-                                 CHILDREN => \@children_array);
+                                 CHILDREN => \@children_array,
+                                 ID => $dest_node_id);
                 $graph_structure_hash{$dest_node_id} = \%dest_node;
             }
-            my $dest_node_hash_ptr = $graph_structure_hash{$dest_node_id};
-            
             
             if (!defined $graph_structure_hash{$src_node_id}) {
                 my @children_array;
                 my %src_node =  ( NAME => $src_node_name,
-                                  CHILDREN => \@children_array );
+                                  CHILDREN => \@children_array,
+                                  ID => $src_node_id);
                 $graph_structure_hash{$src_node_id} = \%src_node;
             }
             my $src_node_hash_ptr = $graph_structure_hash{$src_node_id};
@@ -430,25 +430,32 @@ sub new {
 #
 # @param self: The object container
 # @param global_id: The global id of the request to print
-# @param edge_info: Information to overlay on request
-# @param edge_num_to_name_hash: Maps edge numbers to names
 # @param output_fh: The output filehandle
+# @param edge_info: (OPTIONAL)Information to overlay on request
+# @param edge_num_to_name_hash: (OPTIONAL)Maps edge numbers to names
 ##
 sub print_global_id_indexed_request {
     
-    assert(scalar(@_) == 5);
+    assert(scalar(@_) == 3 || scalar(@_) == 5);
     
-    my $self = shift;
-    my $global_id = shift;
-    my $edge_info = shift;
-    my $edge_num_to_name_hash = shift;
-    my $output_fh = shift;
+    my $self, my $global_id, my $output_fh;
+    my $edge_info, my $edge_num_to_name_hash;
+    if (scalar(@_) == 3) {
+        ($self, $global_id, $output_fh) = @_;
+    } else {
+        ($self, $global_id, $output_fh, $edge_info, $edge_num_to_name_hash) = @_;
+    }
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
     my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
     my $request = $self->$_get_local_id_indexed_request($local_info[0], $local_info[1]);
 
-    my $modified_req = $self->$_overlay_edge_info($request, $edge_info, $edge_num_to_name_hash);
+    my $modified_req;
+    if (defined $edge_info && defined $edge_num_to_name_hash) {
+        $modified_req = $self->$_overlay_edge_info($request, $edge_info, $edge_num_to_name_hash);
+    } else {
+        $modified_req = $request;
+    }
 
     print $output_fh "$modified_req\n";
 }
@@ -711,7 +718,7 @@ sub get_req_structure_given_global_id {
     my $graph_container_hash_ptr = $self->$_build_graph_structure($graph,
                                                                   \%node_name_hash);
 
-    print Dumper %$graph_container_hash_ptr;
+    #print Dumper %$graph_container_hash_ptr;
 
     return $graph_container_hash_ptr;
 }                                                                   

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.5 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.6 2009/04/27 20:14:44 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -550,9 +550,10 @@ my $_print_graph = sub {
 
     # Print the graph
     $print_graphs_class->print_global_id_indexed_request($global_ids[0], 
+                                                         $out_fh,
                                                          $edge_info, 
-                                                         $self->{REVERSE_EDGE_ROW_NUM_HASH},
-                                                         $out_fh);
+                                                         $self->{REVERSE_EDGE_ROW_NUM_HASH});
+                                                         
 };
 
 
@@ -821,8 +822,51 @@ sub get_global_id_of_cluster_rep {
     return $global_ids[0];
 
 }
-    
 
+
+##
+# Returns the global ID of a cluster
+#
+# @param self: The object container
+# @param cluster_id: The cluster ID
+# @param cookie_ptr: A pointer to an opaque cookie that
+# allows the user to call this function iteratively in order
+# to get all the global IDs of requests that belong to this cluster.
+# Initially, the caller should set this to zero; on further iterations
+# the user should pass back the value of the cookie returned by this fn.
+#
+# @bug: *Needs to be modified for the case where there are multiple input vecs
+# per cluster (right now, just one to one mapping)*
+#
+# @return: The global ID of the next request in this cluster
+##
+sub get_cluster_requests {
+    assert(scalar(@_) == 3);
+
+    my $self = shift;
+    my $cluster_id = shift;
+    my $cookie_ptr = shift;
+
+    if ($self->{INPUT_HASHES_LOADED} == 0) {
+        $self->$_load_files_into_hashes();
+    }
+
+    my $cluster_hash = $self->{CLUSTER_HASH};
+    my $input_vec_to_global_ids_hash = $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
+    my @input_vecs = split(/,/, $cluster_hash->{$cluster_id});
+
+    my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
+
+    if(${$cookie_ptr} == scalar(@global_ids)) {
+        return -1;
+    }
+    
+    my $retval =  $global_ids[${$cookie_ptr}];
+    ${$cookie_ptr}++;
+
+    return $retval;
+}
+    
 
 1;    
 
