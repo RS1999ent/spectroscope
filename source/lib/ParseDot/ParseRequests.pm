@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseRequests.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: ParseRequests.pm,v 1.6 2009/04/26 23:48:44 source Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  It also
 # extracts edge latencies and places them in their own files.  The specific files
@@ -392,24 +392,24 @@ my $_handle_edges = sub {
 			my $src_node_name = $node_name_hash->{$src_node_id};
 			my $dest_node_name = $node_name_hash->{$dest_node_id};
 
-			$self->$_add_to_req_edge_hash($src_node_name, 
-                                          $dest_node_name, 
-                                          $edge_latency, 
-                                          $req_edge_latency_hash); 
+			#$self->$_add_to_req_edge_hash($src_node_name, 
+            #                              $dest_node_name, 
+            #                              $edge_latency, 
+            #                              $req_edge_latency_hash); 
             
-            $self->$_add_to_edge_based_avg_latencies_hash($src_node_name,
-                                                          $dest_node_name,
-                                                          $edge_latency,
-                                                          $snapshot);
+            #$self->$_add_to_edge_based_avg_latencies_hash($src_node_name,
+            #                                              $dest_node_name,
+            #                                              $edge_latency,
+            #                                              $snapshot);
 
-            $self->$_print_indiv_edge_latencies($src_node_name,
-                                                $dest_node_name,
-                                                $edge_latency,
-                                                $snapshot);
+            #$self->$_print_indiv_edge_latencies($src_node_name,
+            #                                    $dest_node_name,
+            #                                    $edge_latency,
+            #                                    $snapshot);
         } else {
 
-            $self->$_print_ordered_req_edge_latencies($request_latency, 
-                                                      $req_edge_latency_hash);
+            #$self->$_print_ordered_req_edge_latencies($request_latency, 
+            #                                          $req_edge_latency_hash);
 			last;
 		}
     }
@@ -677,9 +677,9 @@ sub parse_requests {
     }
 
     # print out key edge latency information
-    $self->$_normalize_req_edge_latencies();
+    #$self->$_normalize_req_edge_latencies();
     $self->$_print_ordered_edges();
-    $self->$_print_edge_based_latencies();
+    #$self->$_print_edge_based_latencies();
 
 }
 

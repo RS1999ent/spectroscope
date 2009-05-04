@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.5 2009/04/30 09:16:47 source Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.6 2009/05/02 23:31:29 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -189,9 +189,10 @@ my $_get_alphabetized_edge  = sub {
 
 	#my $src_node_alphabet = chr($alphabet_hash->{$src_node_name});
     my $src_node_alphabet = $alphabet_hash->{$src_node_name};
-	my $dest_node_alphabet = chr($alphabet_hash->{$dest_node_name});
+	my $dest_node_alphabet = $alphabet_hash->{$dest_node_name};
 	
-	$$string_rep = $$string_rep . " " . "$src_node_alphabet";
+	$$string_rep = $$string_rep . " " . "$src_node_alphabet" . " " . 
+        "$dest_node_alphabet";
 };
 
 
