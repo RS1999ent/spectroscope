@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.9 2009/05/03 02:19:29 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.10 2009/05/03 10:31:59 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -255,7 +255,7 @@ my $_overlay_edge_info = sub {
                     $mod_graph_array[$i] = $line;
                     $found = 1;
 
-                    if (DEBUG) {print "found: $edge_name\n"};o
+                    if (DEBUG) {print "found: $edge_name\n"};
                     last;
                 }
             }
@@ -445,11 +445,11 @@ sub new {
 ##
 sub print_global_id_indexed_request {
     
-    assert(scalar(@_) == 2 || scalar(@_) == 4);
+    assert(scalar(@_) == 3 || scalar(@_) == 4);
 
     my $self, my $global_id, my $output_fh;
     my $edge_info;
-    if (scalar(@_) == 2) {
+    if (scalar(@_) == 3) {
         ($self, $global_id, $output_fh) = @_;
     } else {
         ($self, $global_id, $output_fh, $edge_info) = @_;
