@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.8 2009/05/03 02:19:28 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.9 2009/05/03 10:31:59 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -507,6 +507,8 @@ my $_compute_cluster_info = sub {
                                              $s1_mean_and_stddev->[1]];
         $this_cluster_info{EDGE_INFO} = $edge_info;
         
+        $this_cluster_info{ID} = $key;
+        
         $cluster_info_hash{$key} = \%this_cluster_info;
     }
      
@@ -581,7 +583,7 @@ my $_load_files_into_hashes = sub {
 #
 # @param self: The object-container
 # @param cluster_id: The cluster to print
-# @param edge_info: The information about edges that should be
+# @param cluster_info: Aggregate information about this cluster
 #  super-imposed on top of the request
 # @param out_fh: The filehandle to which the graph should be printed
 ##
@@ -591,7 +593,7 @@ my $_print_graph = sub {
 
     my $self = shift;
     my $cluster_id = shift;
-    my $edge_info = shift;
+    my $cluster_info = shift;
     my $out_fh = shift;
 
     my $print_graphs_class = $self->{PRINT_GRAPHS_CLASS};
@@ -607,7 +609,7 @@ my $_print_graph = sub {
     # Print the graph
     $print_graphs_class->print_global_id_indexed_request($global_ids[0], 
                                                          $out_fh,
-                                                         $edge_info);
+                                                         $cluster_info);
 
 };
 
@@ -791,6 +793,9 @@ sub print_clusters {
     open(my $ranked_clusters_fh, 
          ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat")
         or die ("Could not open ranked clusters file: $!\n");
+    open(my $ranked_clusters_graph_fh,
+         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
+        or die("Could not open ranked clusters file\n");
     
     # Print header to ranked_cluster_fh
     printf $ranked_clusters_fh "%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s\n",
@@ -811,21 +816,20 @@ sub print_clusters {
         $rank, $key, $freqs->[0], $freqs->[1], $avg_response_times->[0], $stddevs->[0],
         $avg_response_times->[1], $stddevs->[1];
 
+        $self->$_print_graph($key, $this_cluster_info_hash, $ranked_clusters_graph_fh);
+
         $rank++;
     }
     close ($ranked_clusters_fh);
-
+    close($ranked_clusters_graph_fh);
     
     # Now print the graph representation in ascending Cluster ID order
-    open(my $ranked_clusters_graph_fh,
-         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
-        or die("Could not open ranked clusters file\n");
+
         
     for my $key (sort {$a <=> $b} keys %$cluster_info_hash) {
         my $this_cluster_info_hash = $cluster_info_hash->{$key};
         
-        my $edge_info = $this_cluster_info_hash->{EDGE_INFO};
-        $self->$_print_graph($key, $edge_info, $ranked_clusters_graph_fh);
+
     }
     close($ranked_clusters_graph_fh);
     

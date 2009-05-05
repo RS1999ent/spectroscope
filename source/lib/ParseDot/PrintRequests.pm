@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.10 2009/05/03 10:31:59 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.11 2009/05/04 23:17:53 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -202,22 +202,47 @@ my $_obtain_graph_edge_latencies = sub {
 # @return: A string representation of the graph w/the appropriate info
 # overlayed.
 ##
-my $_overlay_edge_info = sub {
+my $_overlay_cluster_info = sub {
     assert(scalar(@_) == 3);
 
     my $self = shift;
     my $request = shift;
-    my $edge_info_hash = shift;
+    my $cluster_info_hash_ptr = shift;
 
     my %node_name_hash;
     DotHelper::parse_nodes_from_string($request, 1, \%node_name_hash);
+
+    # Construct a "fake node" w/summary information
+    my $summary_node = "1 [fontcolor=\"blue\" shape=\"plaintext\" ";
+    $summary_node = $summary_node . 
+        sprintf("label=\"Cluster ID: %d\\nAvg. response times: %dus / %dus\\n",
+                $cluster_info_hash_ptr->{ID}, 
+                int($cluster_info_hash_ptr->{AVG_RESPONSE_TIMES}->[0] + .5),
+                int($cluster_info_hash_ptr->{AVG_RESPONSE_TIMES}->[1] + .5));
+
+    $summary_node = $summary_node . sprintf("Stddevs: %dus / %dus\\n",
+                                            int($cluster_info_hash_ptr->{STDDEVS}->[0] + .5),
+                                            int($cluster_info_hash_ptr->{STDDEVS}->[1] + .5));
+
+    my $total_reqs = $cluster_info_hash_ptr->{FREQUENCIES}->[0] + $cluster_info_hash_ptr->{FREQUENCIES}->[1];
+    my $percent_reqs_s0 = $cluster_info_hash_ptr->{FREQUENCIES}->[0]/$total_reqs*100;
+    my $percent_reqs_s1 = $cluster_info_hash_ptr->{FREQUENCIES}->[1]/$total_reqs*100;
+    $summary_node = $summary_node . sprintf("Percent makeup: %d / %d\\n",
+                                            int($percent_reqs_s0 + .5),
+                                            int($percent_reqs_s1 + .5));
     
+    $summary_node = $summary_node . sprintf("Total requests: %d\"]",
+                                            $total_reqs);
+                            
+    # Split the graph into lines and insert the summary node after the "Digraph G{"
     my @mod_graph_array = split(/\n/, $request);
+    @mod_graph_array = ($mod_graph_array[0], $mod_graph_array[1], $summary_node, @mod_graph_array[2..$#mod_graph_array]);
     
     # Iterate through edges of graph in the outer loop to implement "location-agnostic"
     # edge comparisons.  Since the edge_info_hash has unique entries for each edge name,
     # the same aggregate info might be overlayed on edges that occur multiple times
     # in the request.
+    my $edge_info_hash = $cluster_info_hash_ptr->{EDGE_INFO};
     for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
         my $line = $mod_graph_array[$i];
         
@@ -440,7 +465,7 @@ sub new {
 # @param self: The object container
 # @param global_id: The global id of the request to print
 # @param output_fh: The output filehandle
-# @param edge_info: (OPTIONAL)Information to overlay on request,
+# @param cluster_info: (OPTIONAL)Information to overlay on request,
 # keyed by edge name ("src_node_name->$dest_node_name"
 ##
 sub print_global_id_indexed_request {
@@ -448,11 +473,11 @@ sub print_global_id_indexed_request {
     assert(scalar(@_) == 3 || scalar(@_) == 4);
 
     my $self, my $global_id, my $output_fh;
-    my $edge_info;
+    my $cluster_info;
     if (scalar(@_) == 3) {
         ($self, $global_id, $output_fh) = @_;
     } else {
-        ($self, $global_id, $output_fh, $edge_info) = @_;
+        ($self, $global_id, $output_fh, $cluster_info) = @_;
     }
 
     # Make sure all input files are loaded into classes
@@ -466,8 +491,8 @@ sub print_global_id_indexed_request {
     my $request = $self->$_get_local_id_indexed_request($local_info[0], $local_info[1]);
 
     my $modified_req;
-    if (defined $edge_info) {
-        $modified_req = $self->$_overlay_edge_info($request, $edge_info);
+    if (defined $cluster_info) {
+        $modified_req = $self->$_overlay_cluster_info($request, $cluster_info);
     } else {
         $modified_req = $request;
     }
