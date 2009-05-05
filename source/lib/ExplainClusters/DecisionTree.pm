@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.2 2009/05/05 09:11:56 source Exp $
+# $cmuPDL: DecisionTree.pm,v 1.3 2009/05/05 10:10:53 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -28,7 +28,7 @@ no define DEBUG =>;
 
 # Data for these columns will not be included when
 # constructing the data table and column headers
-my $_exclude_list = "breadcrumb timestamp tid soid file_soid status";
+my $_exclude_list = "breadcrumb timestamp tid soid file_soid status pid optype";
 
 
 ### Static Callback methods for the match graphs module #########
@@ -57,6 +57,12 @@ sub create_data_table_entries_callback {
     # Format the query
     my $queries = $callback_args->{QUERIES};
     my $query = $queries->{$callback_args->{IDX}};
+    if(!defined $query) {
+        $callback_args->{IDX}++;
+        return;
+
+    }
+
     $query = "$query " . "WHERE breadcrumb=$breadcrumb and timestamp=$timestamp";
 
     #print "Issuing query: $query\n";
@@ -138,12 +144,13 @@ my $_build_column_names_and_queries = sub {
         my @row = $sth->fetchrow_array;
         
         my $column_names = "";
-
+        my $found_non_excluded_attrib = 0;
         foreach (@{$sth->{NAME_lc}}) {
 
             if ($_exclude_list =~ /$_/) {
                 next;
             }
+            $found_non_excluded_attrib = 1;
             $column_header_hash{$column_id_counter} = { TABLE_NAME => $table_name,
                                                         ATTRIBUTE_NAME => $_,
                                                         IDX => $node_idx };
@@ -154,9 +161,14 @@ my $_build_column_names_and_queries = sub {
         # Remove last space and last ','
         chop($column_names);
         chop($column_names);
-        $queries{$node_idx} = "SELECT $column_names FROM $table_name";
+
+        if($found_non_excluded_attrib) {
+            $queries{$node_idx} = "SELECT $column_names FROM $table_name";
+        } else {
+            $queries{$node_idx} = undef;
+        }
         $node_idx++;
-    }    
+    }
 
     return ({COLUMN_HEADER => \%column_header_hash,
              QUERIES => \%queries});
@@ -369,6 +381,7 @@ sub explain_clusters {
                               $mutated_req_container,
                               \&DecisionTree::add_to_matching_nodes_callback,
                               $callback_args);
+    print Dumper @matching_nodes_list;
 
     # Build up column headers and queries for extracting the low-level data
     my $queries_column_names = $self->$_build_column_names_and_queries(\@matching_nodes_list);
