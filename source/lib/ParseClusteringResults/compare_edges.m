@@ -1,4 +1,4 @@
-% $cmuPDL: compare_edges.m,v 1.5 2009/05/03 10:31:59 source Exp $
+% $cmuPDL: compare_edges.m,v 1.6 2009/05/03 11:05:32 source Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edge latencies passed into it and returns whether they are the same.  The
@@ -80,14 +80,14 @@ function [] = compare_edges(s0_file, s1_file, output_file)
         if(isempty(s0_edge_latencies)),
             % This edge was only seen in the s1 data
             fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
-                    i, 1, -1, 0, 0, mean(s1_edge_latencies), std(s1_edge_latencies));
+                    i, 0, -1, 0, 0, mean(s1_edge_latencies), std(s1_edge_latencies));
             continue;
         end
         
         if(isempty(s1_edge_latencies)),
             % This edge was only seen in the s0 data
             fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
-                    i, 1, -2, mean(s0_edge_latencies), std(s0_edge_latencies), 0, 0);
+                    i, 0, -2, mean(s0_edge_latencies), std(s0_edge_latencies), 0, 0);
             continue;
         end
 
