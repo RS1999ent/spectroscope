@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: explain_clusters.pl,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: explain_clusters.pl,v 1.1 2009/04/27 20:14:44 source Exp $
 ##
 # @author Raja Sambasivan
 # 
@@ -16,6 +16,8 @@ use Test::Harness::Assert;
 use Getopt::Long;
 
 use lib '../lib';
+use define DEBUG => 0;
+
 use ParseDot::PrintRequests;
 use ParseClusteringResults::ParseClusteringResults;
 use ExplainClusters::DecisionTree;
@@ -99,21 +101,14 @@ sub parse_options {
 
 parse_options();
 
-my $request_info_obj = new PrintRequests("$g_convert_reqs_dir/global_ids_to_local_ids.dat",
-                                       "$g_convert_reqs_dir/global_req_edge_latencies.dat",
-                                       $g_snapshot0_graphs,
-                                       "$g_convert_reqs_dir/s0_request_index.dat",
-                                       $g_snapshot1_graphs,
-                                       "$g_convert_reqs_dir/s1_request_index.dat");
+my $request_info_obj = new PrintRequests($g_convert_reqs_dir,
+                                         $g_snapshot0_graphs,
+                                         $g_snapshot1_graphs);
 
-my $clustering_results_obj = new ParseClusteringResults("$g_convert_reqs_dir/clusters.dat",
-                                                        "$g_convert_reqs_dir/input_vector.dat",
-                                                        "$g_convert_reqs_dir/input_vec_to_global_ids.dat",
+my $clustering_results_obj = new ParseClusteringResults($g_convert_reqs_dir,
                                                         "req_difference",
                                                         $request_info_obj,
                                                         $g_spectroscope_results_dir);
-
-
 
 my $decision_tree_obj = new DecisionTree($request_info_obj,
                                         $clustering_results_obj,

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: MatchGraphs.pm, v $
+# $cmuPDL: MatchGraphs.pm,v 1.1 2009/04/27 20:14:44 source Exp $
 ##
 # @author Raja Sambasivan
 # 
@@ -33,6 +33,10 @@ our @EXPORT_OK = qw(match_graphs);
 # @param graph2_node: The current graph2 node to be compared
 # @param graph1_structure: The structure of graph1
 # @param graph2_structure: The structure of graph2
+# @param callback_fn: The callback_fn that should be called when
+#  a match is found between the two graphs
+# @param callback_args: The arguments that should be passed into the
+# callback fn
 #
 # graph1_node and graph2_node are hashes that are structured as follows: 
 #   graphx_node => (NAME => string,
@@ -45,34 +49,33 @@ our @EXPORT_OK = qw(match_graphs);
 # These hashes encode the structure of a request-flow graph
 ##
 sub match_nodes {
-    assert(scalar(@_) == 5);
 
-    my $graph1_node = shift;
-    my $graph1_structure = shift;
-    my $graph2_node = shift;
-    my $graph2_structure = shift;
-    my $matching_nodes = shift;
+    assert(scalar(@_) == 6);
+    my ($graph1_node, $graph1_structure, $graph2_node, 
+        $graph2_structure, $callback_fn, $callback_args) = @_;
 
     if($graph1_node->{NAME} eq $graph2_node->{NAME}) {
         
-        # Add this to the list of matching nodes
-        push(@$matching_nodes, $graph1_node->{NAME});
+        # Call the callback fun w/the appropriate parameters
+        my @bc_tc = split(/\./, $graph1_node->{ID});
+        &$callback_fn($callback_args, $graph1_node->{NAME}, $bc_tc[0], $bc_tc[1]);
 
         my $node1_children_array = $graph1_node->{CHILDREN};
         my $node2_children_array = $graph2_node->{CHILDREN};
 
         my $node1_num_children = scalar(@$node1_children_array);
         my $node2_num_children = scalar(@$node2_children_array);
-        print "blah blh blh\n";
-        print Dumper @$node1_children_array;
+
+        #print Dumper @$node1_children_array;
         my $j = 0;
         for(my $i = 0; $i < $node1_num_children; $i++) {
             for (my $k = $j; $k < $node2_num_children; $k++) {
-                print "$node1_children_array->[$i]\n";
-                print "$node2_children_array->[$k]\n";
+
+               # print "$node1_children_array->[$i]\n";
+               # print "$node2_children_array->[$k]\n";
                 my $node1_child = $graph1_structure->{$node1_children_array->[$i]};
                 my $node2_child = $graph2_structure->{$node2_children_array->[$k]};
-
+                # print "$node1_child->{NAME} $node2_child->{NAME}\n";
                 if ($node1_child->{NAME} gt $node2_child->{NAME}) {
                     next;
                 } 
@@ -84,13 +87,13 @@ sub match_nodes {
                     $j = $k + 1;
                     match_nodes($node1_child, $graph1_structure,
                                 $node2_child, $graph2_structure,
-                                $matching_nodes);
+                                $callback_fn, $callback_args);
                     last;
                 }
             }
         }
     }
-    print "Non-matching root node\n";
+    # print "Non-matching root node\n";
 };
 
 
@@ -102,35 +105,35 @@ sub match_nodes {
 # traversed depth-first.  When searching a sub-path for matching nodes,
 # the first non-match will cause the search to be terminated.
 #
-# @param graph1_root: A pointer to the root node of the first graph
-# @param graph1_structure: a pointer to a hash containing a structured
-# representation of the graph (as returned by get_req_structure_given_global_id)
-# in the PrintDot module.
-# @param graph2_root: A pointer to the root of the 2nd graph
-# @param graph2_structure: A pointer to a hash containing a structured
-# representation of the grpah (as returned by get_req_structure_given_global_id)
+# @param graph1_container: The first structured graph
+# @param graph2_container: The second structured graph
+# 
+# Each graph container must be the hash pointer returned by PrintGraphs->
+# get_req_structure_given_global_id().  Specifically, it must have two keys: 
+#    graph_container->{ROOT} = a pointer to a hash containing the root node
+#    graph_container->{NODE_HASH} = a pointer to a hash containing each node of the tree
+#                                   keyed by the node ID. 
 #
-# @return An array of node names that matched in the two graph, ordered by a depth-first
-# traversal w/children of a given node traversed in alphatical order.
 ##
 sub match_graphs {
     
     assert(scalar(@_) == 4);
+    my ($graph1_container, $graph2_container, $callback_fn, $callback_args) = @_;
 
-    my $graph1_root = shift;
-    my $graph1_structure = shift;
-    my $graph2_root = shift;
-    my $graph2_structure = shift;
 
     my @matching_nodes;
-    match_nodes($graph1_root,
-                $graph1_structure,
-                $graph2_root,
-                $graph2_structure,
-                \@matching_nodes);
+    match_nodes($graph1_container->{ROOT},
+                $graph1_container->{NODE_HASH},
+                $graph2_container->{ROOT},
+                $graph2_container->{NODE_HASH},
+                $callback_fn, 
+                $callback_args);
 
-
-    return \@matching_nodes;
 }
+
+
+1;    
+
+
 
 
