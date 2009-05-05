@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.1 2009/04/27 20:14:44 source Exp $
+# $cmuPDL: DecisionTree.pm,v 1.2 2009/05/05 09:11:56 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -59,7 +59,7 @@ sub create_data_table_entries_callback {
     my $query = $queries->{$callback_args->{IDX}};
     $query = "$query " . "WHERE breadcrumb=$breadcrumb and timestamp=$timestamp";
 
-    print "Issuing query: $query\n";
+    #print "Issuing query: $query\n";
 
     # Prepare the query
     my $dbh = $callback_args->{DB_CONN};
@@ -75,7 +75,7 @@ sub create_data_table_entries_callback {
     my $outfid = $callback_args->{OUTFID};
     while (my @row = $sth->fetchrow_array()) {        
         my $row_data = join(', ', @row);
-        print $outfid "$row_data ";
+        print $outfid "$row_data, ";
         $row_num++;
     }
     assert($row_num == 1);
