@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseRequests.pm,v 1.6 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: ParseRequests.pm,v 1.7 2009/05/04 23:14:23 source Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  It also
 # extracts edge latencies and places them in their own files.  The specific files
@@ -629,24 +629,26 @@ sub new {
 sub do_output_files_exist {
     my $self = shift;
     
-    if(-e $self->{S0_REQUEST_INDEX_FILE} &&
-       -e $self->{GLOBAL_REQ_EDGE_LATENCIES_FILE} &&
-       -e $self->{GLOBAL_REQ_EDGE_LATENCIES_COLUMN_FILE} &&
-       -e $self->{GLOBAL_EDGE_BASED_AVG_LATENCIES_FILE} &&
-       -e $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+    if(-e $self->{S0_REQUEST_INDEX_FILE}) { #&&
+       #-e $self->{GLOBAL_REQ_EDGE_LATENCIES_FILE} &&
+       #-e $self->{GLOBAL_REQ_EDGE_LATENCIES_COLUMN_FILE} &&
+       #-e $self->{GLOBAL_EDGE_BASED_AVG_LATENCIES_FILE} &&
+       #-e $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE}) {
         
         if(defined $self->{SNAPSHOT1_FILE}) {       
             # Must also check to see if output files specific to
             # snapshot 1 already exist
-            if(-e $self->{S1_REQUEST_INDEX_FILE} &&
-               -e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+            if(-e $self->{S1_REQUEST_INDEX_FILE}) { #&&
+               #-e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
                 # All output files for snapshot1 and snapshot1 exist
                 return 1;
             } 
             # Output files for snapshot1 do not exist
+            print "No snapshot1 files\n";
             return 0;
         }
         # No snapshot1 file; output files for snapshot0 exist
+        print "no snapshot0 files\n";
         return 1;
     }
 
