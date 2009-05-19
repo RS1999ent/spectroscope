@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: get_request_by_global_id.pl,v $
+# $cmuPDL: get_request_by_global_id.pl,v 1.1 2009/05/03 02:20:42 source Exp $
 
 ##
 # @author Raja Sambasivan
@@ -49,8 +49,8 @@ sub print_usage {
     print "usage: get_request_by_global_id.pl --snapshot0_file --snapshot1_file\n" .
         "(--parse_requests_output_dir or --spectroscope_output_dir) --global_id\n";
     print "\n";
-    print "\t--snapshot0_file: The file containing requests from snapshot0\n";
-    print "\t--snapshot1_file: (OPTIONAL) The file containing requests from snapshot1\n";
+    print "\t--snapshot0: The file containing requests from snapshot0\n";
+    print "\t--snapshot1: (OPTIONAL) The file containing requests from snapshot1\n";
     print "\t--spectroscope_output_dir: (OPTIONAL) The directory in which Spectroscope's\n" . 
         "\t results exist\n";
     print "\t--parse_requests_output_dir: (OPTIONAL) The directory in which the indices\n" .
@@ -77,7 +77,7 @@ sub parse_options {
         exit(-1);
     }
 
-    if(!defined $g_global_id || 
+    if(!defined $g_global_id || !defined $g_snapshot0_file || 
        (!defined $g_parse_requests_output_dir && !defined $g_spectroscope_output_dir)) {
         print_usage();
         exit(-1);

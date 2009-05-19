@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.9 2009/05/03 10:31:59 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.10 2009/05/05 22:57:58 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -79,11 +79,11 @@ my $_print_boxplots = sub {
         return;
     }
 
-    if (scalar(@$s0_values) > 4) {
+    if (scalar(@$s0_values) >= 4) {
         push(@labels, "s0");
         push(@values, $s0_values);
     }
-    if (scalar(@$s1_values) > 4) {
+    if (scalar(@$s1_values) >= 4) {
         push(@labels, "s1");
         push(@values, $s1_values);
     }

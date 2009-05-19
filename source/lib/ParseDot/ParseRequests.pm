@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseRequests.pm,v 1.7 2009/05/04 23:14:23 source Exp $
+# $cmuPDL: ParseRequests.pm,v 1.8 2009/05/05 20:28:22 source Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  It also
 # extracts edge latencies and places them in their own files.  The specific files
@@ -430,10 +430,12 @@ my $_remove_existing_files = sub {
             or die("Could not delete old $self->{S0_REQUEST_INDEX_FILE}");
     }
     
-    if (-e $self->{S1_REQUEST_INDEX_FILE}) {
-        print("Deleting old $self->{S1_REQUEST_INDEX_FILE}\n");
-        system("rm -f $self->{S1_REQUEST_INDEX_FILE}") == 0
-            or die("Could not delete old $self->{S1_REQUEST_INDEX_FILE}");
+    if(defined $self->{S1_REQUEST_INDEX_FILE}) {
+        if (-e $self->{S1_REQUEST_INDEX_FILE}) {
+            print("Deleting old $self->{S1_REQUEST_INDEX_FILE}\n");
+            system("rm -f $self->{S1_REQUEST_INDEX_FILE}") == 0
+                or die("Could not delete old $self->{S1_REQUEST_INDEX_FILE}");
+        }
     }
     
 	if (-e $self->{GLOBAL_REQ_EDGE_LATENCIES_FILE}) {
@@ -466,10 +468,12 @@ my $_remove_existing_files = sub {
             or die("Could not delete old $self->{S0_EDGE_BASED_INDIV_LATENCIES_FILE}\n");
     }
 
-    if(-e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
-        print("Deleting old $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}\n");
-        system("rm -f $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}") == 0
-            or die("Could not delete old $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}\n");
+    if (defined $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+        if(-e $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}) {
+            print("Deleting old $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}\n");
+            system("rm -f $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}") == 0
+                or die("Could not delete old $self->{S1_EDGE_BASED_INDIV_LATENCIES_FILE}\n");
+        }
     }
 
 	if (-e $self->{GLOBAL_IDS_TO_LOCAL_IDS_FILE}) {
@@ -644,11 +648,9 @@ sub do_output_files_exist {
                 return 1;
             } 
             # Output files for snapshot1 do not exist
-            print "No snapshot1 files\n";
             return 0;
         }
         # No snapshot1 file; output files for snapshot0 exist
-        print "no snapshot0 files\n";
         return 1;
     }
 
