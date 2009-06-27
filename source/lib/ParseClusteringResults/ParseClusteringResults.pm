@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.10 2009/05/05 22:57:58 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.11 2009/05/19 06:32:28 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -20,7 +20,7 @@ use Cwd;
 use Test::Harness::Assert;
 use GD::Graph::boxplot;
 use Statistics::Descriptive;
-use List::Util qw[max];
+use List::Util qw[max sum];
 use diagnostics;
 
 #### Global constants #############
@@ -115,19 +115,23 @@ my $_find_mean_and_stddev = sub {
     my $self = shift;
     my $data_ptr = shift;
     my @mean_and_stddev;
-
-    if(scalar(@$data_ptr) < 4) {
-        # Not enough data to compute mean/stddev
-        $mean_and_stddev[0] = -1;
-        $mean_and_stddev[1] = -1;
+    
+    if(scalar(@$data_ptr) == 0) {
+        $mean_and_stddev[0] = 0;
+        $mean_and_stddev[1] = 0;
         return \@mean_and_stddev;
     }
 
     my $stat = Statistics::Descriptive::Full->new();
-    $stat->add_data($data_ptr);
-
+    $stat->add_data($data_ptr);        
     $mean_and_stddev[0] = $stat->mean();
-    $mean_and_stddev[1] = $stat->standard_deviation();
+
+    # Can only calculate standard deviation if more than 2 points exist
+    if(scalar(@$data_ptr) < 2) {
+        $mean_and_stddev[1] = 0;
+    } else {
+        $mean_and_stddev[1] = $stat->standard_deviation();
+    }
 
     return \@mean_and_stddev
 };
