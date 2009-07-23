@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: explain_clusters.pl,v 1.1 2009/04/27 20:14:44 source Exp $
+# $cmuPDL: explain_clusters.pl,v 1.2 2009/05/05 09:11:56 source Exp $
 ##
 # @author Raja Sambasivan
 # 
@@ -60,7 +60,7 @@ my $g_convert_reqs_dir;
 ##
 sub print_usage {
     print "usage: explain_clusters.pl --spectroscope_results_dir --mutated_cluster_id\n" .
-        "\t--original_cluster_id\n";
+        "\t--original_cluster_id --s0_database --s1_database --snapshot0 --snapshot1\n";
     print "\n";
     print "\t--spectroscope_results_dir: Location of the Spectroscope results\n";
     print "\t--mutated_cluster_id: ID of the mutated cluster\n";

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.11 2009/05/04 23:17:53 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.12 2009/05/05 22:57:58 source Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -27,8 +27,11 @@ no define DEBUG =>;
 ##
 # Loads: 
 #  $self->{SNAPSHOT0_INDEX_HASH} from $self->{SNAPSHOT0_INDEX_FILE}
+#    * Maps "snapshot0_filename_index.local_id" -> byte offset of request
 #  $self->{SNAPSHOT1_INDEX_HASH} from $self->{SNAPSHOT1_INDEX_FILE}
-#  $self->{GLBOAL_ID_TO_LOCAL_ID_HASH} from $self->{GLOBAL_ID_TO_LOCAL_ID_FILE}
+#    * Maps "snapshot1_filename_index.local_id" -> byte offset of request
+#  $self->{GLOBAL_ID_TO_LOCAL_ID_HASH} from $self->{GLOBAL_ID_TO_LOCAL_ID_FILE}
+#    * Maps global_id -> "local id, dataset, filename index".
 #  
 # @param self: The object container
 ##
@@ -43,15 +46,15 @@ my $_load_input_files_into_hashes = sub {
     while (<$snapshot0_index_fh>) {
         my @data = split(/ /, $_);
         chomp;
-        $snapshot0_index_hash{$data[0]} = $data[1];
+        assert(scalar(@data) == 3);
+        $snapshot0_index_hash{"$data[0].$data[1]"} = $data[2];
     }
     close($snapshot0_index_fh);
     $self->{SNAPSHOT0_INDEX_HASH} = \%snapshot0_index_hash;
 
-
     # If necessary, load the snapshot1 index
     if (defined $self->{SNAPSHOT1_INDEX_FILE}) {
-        assert(defined $self->{SNAPSHOT1_FILE});
+        assert(defined $self->{SNAPSHOT1_FILES_REF});
     
         open(my $snapshot1_index_fh, "<$self->{SNAPSHOT1_INDEX_FILE}")
             or die("Could not open $self->{SNAPSHOT1_INDEX_FILE}");
@@ -60,7 +63,8 @@ my $_load_input_files_into_hashes = sub {
         while (<$snapshot1_index_fh>) {
             chomp;
             my @data = split(/ /, $_);
-            $snapshot1_index_hash{$data[0]} = $data[1];
+            assert(scalar(@data) == 3);
+            $snapshot1_index_hash{"$data[0].$data[1]"} = $data[2];
         }
         close ($snapshot1_index_fh);
         $self->{SNAPSHOT1_INDEX_HASH} = \%snapshot1_index_hash;
@@ -74,14 +78,15 @@ my $_load_input_files_into_hashes = sub {
     while(<$global_id_to_local_id_fh>) {
         chomp;
         my @data = split(/ /, $_);
-        assert($#data == 2);
+        my $blah = scalar(@data);
+        assert(scalar(@data) == 4);
 
-        $global_id_to_local_id_hash{$data[0]} = join(',', ($data[1], $data[2]));
+        $global_id_to_local_id_hash{$data[0]} = join(',', ($data[1], $data[2], $data[3]));
     }
     close($global_id_to_local_id_fh);
     $self->{GLOBAL_ID_TO_LOCAL_ID_HASH} = \%global_id_to_local_id_hash;
 
-    $self->{HASHES_LOADED} = 1;
+    return 0;
 };
 
 
@@ -96,32 +101,27 @@ my $_load_input_files_into_hashes = sub {
 ##
 my $_get_local_id_indexed_request = sub {
 
-    assert(scalar(@_) == 3);
-
-    my $self = shift;
-    my $local_id = shift;
-    my $snapshot = shift;
+    assert(scalar(@_) == 4);
+    my ($self, $local_id, $snapshot, $filename_idx) = @_;
 
     assert($snapshot == 0 || $snapshot == 1);
-
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-    }
 
     my $snapshot_fh;
     if($snapshot == 0) {
         my $snapshot_index = $self->{SNAPSHOT0_INDEX_HASH};
-        open($snapshot_fh, "<$self->{SNAPSHOT0_FILE}");
-        seek($snapshot_fh, $snapshot_index->{$local_id}, 0); # SEEK_SET
+        assert($filename_idx < scalar(@{$self->{SNAPSHOT0_FILES_REF}}));
+        open($snapshot_fh, "<@{$self->{SNAPSHOT0_FILES_REF}}[$filename_idx]");
+        seek($snapshot_fh, $snapshot_index->{"$filename_idx.$local_id"}, 0); # SEEK_SET
     }
     
     if($snapshot == 1) {
-        assert(defined $self->{SNAPSHOT1_FILE} &&
+        assert(defined $self->{SNAPSHOT1_FILES_REF} &&
                defined $self->{SNAPSHOT1_INDEX_FILE});
         
         my $snapshot_index = $self->{SNAPSHOT1_INDEX_HASH};
-        open($snapshot_fh, "<$self->{SNAPSHOT1_FILE}");
-        seek($snapshot_fh, $snapshot_index->{$local_id}, 0); # SEEK_SET
+        assert($filename_idx < scalar(@{$self->{SNAPSHOT1_FILES_REF}}));        
+        open($snapshot_fh, "<@{$self->{SNAPSHOT1_FILES_REF}}[$filename_idx]");
+        seek($snapshot_fh, $snapshot_index->{"$filename_idx.$local_id"}, 0); # SEEK_SET
     }
 
     # Print the request
@@ -406,7 +406,7 @@ my $_build_graph_structure = sub {
 };
     
 
-#### API functions #############
+#### API functions ############################################################
 
 ##
 # Class constructor.  Obtains locations of files needed
@@ -416,15 +416,15 @@ sub new {
 
     assert(scalar(@_) == 3 || scalar(@_) == 4);
 
-    my $proto, my $convert_reqs_dir, my $snapshot0_file, my $snapshot0_index;
-    my $snapshot1_file, my $snapshot1_index;
+    my $proto, my $convert_reqs_dir, my $snapshot0_files_ref, my $snapshot0_index;
+    my $snapshot1_files_ref, my $snapshot1_index;
     
     if(scalar(@_) == 3) {
-        ($proto, $convert_reqs_dir, $snapshot0_file) = @_;
+        ($proto, $convert_reqs_dir, $snapshot0_files_ref) = @_;
         $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
     } else {
-        ($proto, $convert_reqs_dir, $snapshot0_file,
-         $snapshot1_file) = @_;
+        ($proto, $convert_reqs_dir, $snapshot0_files_ref,
+         $snapshot1_files_ref) = @_;
         $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
         $snapshot1_index = "$convert_reqs_dir/s1_request_index.dat";
     }
@@ -434,24 +434,27 @@ sub new {
     my $self = {};
 
     $self->{GLOBAL_ID_TO_LOCAL_ID_FILE} = "$convert_reqs_dir/global_ids_to_local_ids.dat";
-    $self->{REQ_EDGE_LATENCIES_FILE} = "$convert_reqs_dir/global_req_edge_latencies.dat",
 
-    $self->{SNAPSHOT0_FILE} = $snapshot0_file;
+    $self->{SNAPSHOT0_FILES_REF} = $snapshot0_files_ref;
     $self->{SNAPSHOT0_INDEX_FILE} = $snapshot0_index;
 
-    if (defined $snapshot1_file) {
-        $self->{SNAPSHOT1_FILE} = $snapshot1_file;
+    if (defined $snapshot1_files_ref) {
+        $self->{SNAPSHOT1_FILES_REF} = $snapshot1_files_ref;
         assert(defined $snapshot1_index);
         $self->{SNAPSHOT1_INDEX_FILE} = $snapshot1_index;
     } else {
-        $self->{SNAPSHOT1_FILE} = undef;
+        $self->{SNAPSHOT1_FILES_REF} = undef;
         $self->{SNAPSHOT1_INDEX} = undef;
     }
 
     $self->{SNAPSHOT0_INDEX_HASH} = undef;
     $self->{SNAPSHOT1_INDEX_HASH} = undef;
     $self->{GLOBAL_ID_TO_LOCAL_ID_HASH} = undef;
-    $self->{HASHES_LOADED} = 0;
+
+    if($self->$_load_input_files_into_hashes() != 0) {
+        print "Unable to load input files into hashes\n";
+        assert(0);
+    }
 
     bless($self, $class);
     return $self;
@@ -480,15 +483,9 @@ sub print_global_id_indexed_request {
         ($self, $global_id, $output_fh, $cluster_info) = @_;
     }
 
-    # Make sure all input files are loaded into classes
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
-    
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-    my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
-    my $request = $self->$_get_local_id_indexed_request($local_info[0], $local_info[1]);
+    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
+    my $request = $self->$_get_local_id_indexed_request($local_id, $snapshot, $filename_idx);
 
     my $modified_req;
     if (defined $cluster_info) {
@@ -539,23 +536,16 @@ sub print_local_id_indexed_request {
 ##
 sub get_snapshots_given_global_ids {
 
-    # Assert that two arguments are passed in
     assert(scalar(@_) == 2);
+    my ($self, $global_ids_ptr) = @_;
 
-    my $self = shift;
-    my $global_ids_ptr = shift;
     my @snapshots;
-
-    # Make sure all input files are loaded into classes
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
     foreach (@$global_ids_ptr) {
-        my @local_info = split(/,/, $global_id_to_local_id_hash->{$_});
-        push(@snapshots, $local_info[1]);
+        
+        my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$_});
+        push(@snapshots, $snapshot);
     }
     
     return \@snapshots;
@@ -577,21 +567,15 @@ sub get_snapshot_frequencies_given_global_ids {
     
     # Assert that two arguments are passed in
     assert(scalar(@_) == 2);
-    
-    my $self = shift;
-    my $global_ids_ptr = shift;
-    my @frequencies;
+    my ($self, $global_ids_ptr) = @_;
 
-    if ($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
+    my @frequencies;
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
     my $s1_reqs = 0;
     foreach (@$global_ids_ptr) {
-        my @local_info = split(/,/, $global_id_to_local_id_hash->{$_});
-        $s1_reqs += $local_info[1];
+        my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$_});
+        $s1_reqs += $snapshot;
     }
 
 
@@ -622,16 +606,8 @@ sub get_snapshot_frequencies_given_global_ids {
 sub get_response_times_given_global_ids {
     
     # Assert that two arguments are passed in
-    assert(scalar(@_) == 2 || scalar(@_) == 3);
-
-    my $self = shift;
-    my $global_ids_ptr = shift;
-
-    # Make sure all input files are loaded into classes
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
+    assert(scalar(@_) == 2);
+    my ($self, $global_ids_ptr) = @_;
     
     my %response_time_hash;
     my @s0_response_times;
@@ -640,24 +616,26 @@ sub get_response_times_given_global_ids {
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
 
     foreach (@$global_ids_ptr) {
-        my @local_info = split(/,/, $global_id_to_local_id_hash->{$_});
-        my $graph = $self->$_get_local_id_indexed_request($local_info[0],
-                                                          $local_info[1]);
+        my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$_});
 
-        my $local_id;
+        my $graph = $self->$_get_local_id_indexed_request($local_id,
+                                                          $snapshot,
+                                                          $filename_idx);
+        my $graph_local_id;
         my $response_time;
         my @graph_arr = split(/\n/, $graph);
 
         if ($graph_arr[0] =~ /\# (\d+)  R: ([0-9\.]+)/) {
-            $local_id = $1;
+            $graph_local_id = $1;
             $response_time = $2;
         } else {
             assert(0);
         }
-        assert ($local_id == $local_info[0]);
+
+        assert ($local_id == $graph_local_id);
         
         
-        if($local_info[1] == 0) {
+        if($snapshot == 0) {
             # Request is from snapshot0
             push(@s0_response_times, $response_time);
         } else{ 
@@ -691,20 +669,13 @@ sub get_response_times_given_global_ids {
 sub get_request_edge_latencies_given_global_id {
     
     assert(scalar(@_) == 2);
-
-    my $self = shift;
-    my $global_id = shift;
-
-    # Make sure all input files are loaded into classes
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
+    my ($self, $global_id) = @_;
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-    my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
-    my $graph = $self->$_get_local_id_indexed_request($local_info[0],
-                                                      $local_info[1]);
+    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
+    my $graph = $self->$_get_local_id_indexed_request($local_id,
+                                                      $snapshot,
+                                                      $filename_idx);
 
     my %node_name_hash;
     DotHelper::parse_nodes_from_string($graph, 1, \%node_name_hash);
@@ -735,20 +706,13 @@ sub get_request_edge_latencies_given_global_id {
 sub get_req_structure_given_global_id {
 
     assert(scalar(@_) == 2);
-
-    my $self = shift;
-    my $global_id = shift;
-
-    # Make sure all input files are loaded into classes
-    if($self->{HASHES_LOADED} == 0) {
-        $self->$_load_input_files_into_hashes();
-        assert($self->{HASHES_LOADED} == 1);
-    }
+    my ($self, $global_id) = @_;
     
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-    my @local_info = split(/,/, $global_id_to_local_id_hash->{$global_id});
-    my $graph = $self->$_get_local_id_indexed_request($local_info[0],
-                                                      $local_info[1]);
+    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
+    my $graph = $self->$_get_local_id_indexed_request($local_id,
+                                                      $snapshot,
+                                                      $filename_idx);
 
     my %node_name_hash;
     # @note DO NOT include semantic labels when parsing nodes from the string

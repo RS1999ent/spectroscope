@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.6 2009/05/02 23:31:29 source Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.7 2009/05/04 23:14:23 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -62,16 +62,16 @@ use Test::Harness::Assert;
 ##
 my $_print_alphabet_mapping = sub {
 	my $self = shift;
-
+    
 	open(my $alphabet_mapping_fh, ">$self->{ALPHABET_MAPPING_FILE}");
-
+    
     my $alphabet_hash = $self->{ALPHABET_HASH};
 	
 	foreach my $node_name (sort {$alphabet_hash->{$a} <=> $alphabet_hash->{$b}} keys %$alphabet_hash) {
 		my $alphabet_val = $alphabet_hash->{$node_name};
 		print $alphabet_mapping_fh "$alphabet_val -> $node_name\n";
 	}
-
+    
     close($alphabet_mapping_fh);
 };
 
@@ -90,26 +90,26 @@ my $_print_alphabet_mapping = sub {
 ##
 my $_print_string_rep_hash = sub {
     my $self = shift;
-
+    
     print "$self->{INPUT_VECTOR_FILE}\n\n\n\n";
     print "$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}\n\n\n";
-
+    
 	open(my $string_rep_fh, ">$self->{INPUT_VECTOR_FILE}");
 	open(my $string_rep_mapping_fh, ">$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}");
-
+    
     my $string_rep_hash = $self->{STRING_REP_HASH};
     my $string_rep_mapping = $self->{STRING_REP_MAPPING};
-
+    
 	foreach my $key (keys %$string_rep_hash) {
-
+        
 		# Print the string_rep_hash
 		my @arr = @{$string_rep_hash->{$key}};
 		print $string_rep_fh "$arr[0] $arr[1] $key\n";
-
+        
 		# Print the mapping from string representation to global IDs
 		print $string_rep_mapping_fh "@{$string_rep_mapping->{$key}}\n";
 	}
-
+    
     close($string_rep_fh);
     close($string_rep_mapping_fh);
 };
@@ -130,30 +130,30 @@ my $_print_string_rep_hash = sub {
 ##
 my $_handle_nodes = sub {
     my $self = shift;
-
+    
 	my $in_data_fh = shift;
 	my $node_name_hash = shift;
 	my $last_in_data_fh_pos;
     my $node_name;
-
+    
     my $alphabet_hash = $self->{ALPHABET_HASH};
-
+    
 	$last_in_data_fh_pos = tell($in_data_fh);
-
+    
 	while(<$in_data_fh>) {
-
+        
 		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
-
+            
 			# Add the Node label to the alphabet hash 
             if (defined $4) { 
                 $node_name = $3 . "_" . $4; 
             } else {
                 $node_name = $3;
             }
-
+            
 			if(!defined $alphabet_hash->{$node_name}) {
 				$alphabet_hash->{$node_name} = $self->{ALPHABET_COUNTER}++;
-
+                
 				#if($self->{ALPHABET_COUNTER} >= 126) {
 				#	print "USED LAST POSSIBLE CHARACTER!!!\n";
 				#	assert(0);
@@ -169,7 +169,7 @@ my $_handle_nodes = sub {
 		}
 		$last_in_data_fh_pos = tell($in_data_fh);
 	}
-
+    
 };
 
 
@@ -180,13 +180,13 @@ my $_handle_nodes = sub {
 ##
 my $_get_alphabetized_edge  = sub {
     my $self = shift;
-
+    
 	my $src_node_name = shift;
 	my $dest_node_name = shift;
 	my $string_rep = shift;
-
+    
     my $alphabet_hash = $self->{ALPHABET_HASH};
-
+    
 	#my $src_node_alphabet = chr($alphabet_hash->{$src_node_name});
     my $src_node_alphabet = $alphabet_hash->{$src_node_name};
 	my $dest_node_alphabet = $alphabet_hash->{$dest_node_name};
@@ -278,43 +278,44 @@ my $_handle_edges = sub {
 # compatibile output.  
 #
 # @param self: The object-container
-# @param snapshot_file: The file from which to read requests
-# @param dataset: The snapshot (0 or 1)
+# @param files_ref: Reference to an array of filenames containing
+#  files from the appropriate period
+# @param dataset: The period (0 for non-problem, 1 for problem)
 ##
 my $_handle_requests = sub {
-	my $self = shift;
-
-	my $snapshot_file = shift;
-	my $dataset = shift;
-
+    
+    assert(scalar(@_) == 3);
+    my ($self, $files_ref, $dataset) = @_;
     assert($dataset == 0 || $dataset == 1);
-
-	open(my $snapshot_fh, "<$snapshot_file");
-
-	while(<$snapshot_fh>) {
-		my %node_name_hash;
-
-		if(/\# (\d+)  R: ([0-9\.]+)/) {
-            # Great!!!
-		} else {
-			# This is not the start of a request
-			next;
-		}
-							   
-		# Skip the "{" line
-		$_ = <$snapshot_fh>;
-		
-		# Append to the alphabet
-		$self->$_handle_nodes($snapshot_fh, \%node_name_hash);
-							   
-		# Print edges names and latencies
-		$self->$_handle_edges($snapshot_fh, \%node_name_hash,
-					 $self->{GLOBAL_ID}, $dataset);
-
-		$self->{GLOBAL_ID} = $self->{GLOBAL_ID} + 1;
-	}
-
-    close($snapshot_fh);
+    
+    for(my $i = 0; $i < scalar(@{$files_ref}); $i++) {
+        open(my $snapshot_fh, "<@{$files_ref}[$i]");
+        
+        while(<$snapshot_fh>) {
+            my %node_name_hash;
+            
+            if(/\# (\d+)  R: ([0-9\.]+)/) {
+                # Great!!!
+            } else {
+                # This is not the start of a request
+                next;
+            }
+            
+            # Skip the "{" line
+            $_ = <$snapshot_fh>;
+            
+            # Append to the alphabet
+            $self->$_handle_nodes($snapshot_fh, \%node_name_hash);
+            
+            # Print edges names and latencies
+            $self->$_handle_edges($snapshot_fh, \%node_name_hash,
+                                  $self->{GLOBAL_ID}, $dataset);
+            
+            $self->{GLOBAL_ID} = $self->{GLOBAL_ID} + 1;
+        }
+        
+        close($snapshot_fh);
+    }
 };
 
 
@@ -364,19 +365,15 @@ my $_remove_existing_files = sub {
 #### API functions ##########################################
 
 sub new {
-    my $proto = shift;
-    my $snapshot0_file;
-    my $snapshot1_file;
+    my $proto;
+    my $snapshot0_files_ref;
+    my $snapshot1_files_ref;
     my $output_dir;
-
-
-    # Get constructor parameters
-    $snapshot0_file = shift;
-    if ($#_ == 1)  {
-        $snapshot1_file = shift;
-        $output_dir = shift;
-    } elsif ($#_ == 0) {
-        $output_dir = shift;
+    
+    if (scalar(@_) == 4) {
+        ($proto, $snapshot0_files_ref, $snapshot1_files_ref, $output_dir) = @_;
+    } elsif (scalar(@_) == 3) {
+        ($proto, $snapshot0_files_ref, $output_dir) = @_;
     } else {
         print "Invalid instantiaton of this object!\n";
         assert(0);
@@ -386,34 +383,35 @@ sub new {
     
     my $self = {};
     
-    $self->{SNAPSHOT0_FILE} = $snapshot0_file;
-    if(defined $snapshot1_file) {
-        $self->{SNAPSHOT1_FILE} = $snapshot1_file;
+    $self->{SNAPSHOT0_FILES_REF} = $snapshot0_files_ref;
+    if(defined $snapshot1_files_ref) {
+        $self->{SNAPSHOT1_FILES_REF} = $snapshot1_files_ref;
     } else {
-        $self->{SNAPSHOT1_FILE} = undef;
+        $self->{SNAPSHOT1_FILES_REF} = undef;
     }
+    
     $self->{INPUT_VECTOR_FILE} = "$output_dir/input_vector.dat";
     $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$output_dir/input_vec_to_global_ids.dat";
-
+    
     # Hash of String representation for each unique request seen
     $self->{STRING_REP_HASH} = {};
     # Mapping of individual requests to their representation in the above hash.
     $self->{STRING_REP_MAPPING} = {};
     # Mapping from alphabet to node name
     $self->{ALPHABET_MAPPING_FILE} = "$output_dir/alphabet_mapping.dat";
-
+    
     # Hash table describing mapping between characters and node names
     $self->{ALPHABET_HASH} = {};
     # The first valid alphabet counter
     $self->{ALPHABET_COUNTER} = 1;
-
+    
     # Specifies the distance between requests for clustering
     $self->{DISTANCE_MATRIX_FILE} = "$output_dir/distance_matrix.dat";
     
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
-
+    
     bless ($self, $class);
     return $self;
 }
@@ -444,9 +442,9 @@ sub create_clustering_input {
 
     $self->$_remove_existing_files();
 
-    $self->$_handle_requests($self->{SNAPSHOT0_FILE}, 0);
-    if(defined $self->{SNAPSHOT1_FILE}) {
-        $self->$_handle_requests($self->{SNAPSHOT1_FILE}, 1);
+    $self->$_handle_requests($self->{SNAPSHOT0_FILES_REF}, 0);
+    if(defined $self->{SNAPSHOT1_FILES_REF}) {
+        $self->$_handle_requests($self->{SNAPSHOT1_FILES_REF}, 1);
     }
 
     $self->$_compute_distance_matrix();

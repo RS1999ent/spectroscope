@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.4 2009/05/03 02:19:29 source Exp $
+# $cmuPDL: spectroscope.pl,v 1.5 2009/05/03 10:31:59 source Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -36,11 +36,11 @@ my $g_output_dir;
 # The directory the output of hte ConvertRequests module should be placed
 my $g_convert_reqs_output_dir;
 
-# The file containing DOT requests from the non-problem period
-my $g_snapshot0_file;
+# The file(s) containing DOT requests from the non-problem period(s)
+my @g_snapshot0_files;
 
-# The file containing DOT requests from the problem period
-my $g_snapshot1_file;
+# The file(s) containing DOT requests from the problem period(s)
+my @g_snapshot1_files;
 
 # If clustering is enabled, these parameters will be used as the 
 # parameters for the clustering algorithm
@@ -82,24 +82,24 @@ my $g_parse_requests;
 # Get input arguments
 parse_options();
 
-if (defined $g_snapshot1_file) {
-    $g_create_clustering_input = new CreateClusteringInput($g_snapshot0_file,
-                                                           $g_snapshot1_file,
+if (defined $g_snapshot1_files[0]) {
+    $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
+                                                           \@g_snapshot1_files,
                                                            $g_convert_reqs_output_dir);
 
-    $g_parse_requests = new ParseRequests($g_snapshot0_file,
-                                          $g_snapshot1_file,
+    $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
+                                          \@g_snapshot1_files,
                                           $g_convert_reqs_output_dir);
 } else {
-    $g_create_clustering_input = new CreateClusteringInput($g_snapshot0_file,
+    $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
                                                            $g_convert_reqs_output_dir);
 
-    $g_parse_requests = new ParseRequests($g_snapshot0_file,
-                                          $g_snapshot1_file,
+    $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
+                                          \@g_snapshot1_files,
                                           $g_convert_reqs_output_dir);
 }
 
-## Determine whether indices and the matlab clustering input
+# Determine whether indices and the matlab clustering input
 # needs to be re-created.
 #
 my $clustering_output_files_exist = $g_create_clustering_input->do_output_files_exist();
@@ -146,8 +146,8 @@ if ($g_pass_through) {
                            
 
 my $g_print_requests = new PrintRequests("$g_convert_reqs_output_dir",
-                                         $g_snapshot0_file,
-                                         $g_snapshot1_file);
+                                         \@g_snapshot0_files,
+                                         \@g_snapshot1_files);
 
 
 my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
@@ -167,8 +167,8 @@ $g_parse_clustering_results->print_clusters();
 sub parse_options {
 
 	GetOptions("output_dir=s"   => \$g_output_dir,
-			   "snapshot0=s"    => \$g_snapshot0_file,
-			   "snapshot1:s"    => \$g_snapshot1_file,
+			   "snapshot0=s{1,10}"    => \@g_snapshot0_files,
+			   "snapshot1:s{1,10}"    => \@g_snapshot1_files,
 			   "min_k=i"        => \$g_clustering_params{MIN_K},
 			   "max_k=i"        => \$g_clustering_params{MAX_K},
 			   "k_interval=i",  => \$g_clustering_params{K_INTERVAL},
@@ -178,7 +178,7 @@ sub parse_options {
 			   "reconvert_reqs+" => \$g_reconvert_reqs);
 
     # These parameters must be specified by the user
-    if (!defined $g_output_dir || !defined $g_snapshot0_file ||
+    if (!defined $g_output_dir || !defined $g_snapshot0_files[0] ||
        !defined $g_cluster_output_ranking) {
         print_usage();
         exit(-1);
@@ -207,10 +207,10 @@ sub print_usage {
     print "\n";
     print "\t--output_dir: The directory in which output should be placed\n";
     print "\t--ranking: Must be specified as req_difference\n";
-    print "\t--snapshot0: The name of the dot graph output containing requests from\n" .
-        "\t the non-problem snapshot\n";
-	print "\t--snapshot1: The name of the dot graph output containing requests from\n" . 
-        "\t the problem snapshot (OPTIONAL)\n";
+    print "\t--snapshot0: The name(s) of the dot graph output containing requests from\n" .
+        "\t the non-problem snapshot(s).  Up to 10 non-problem snapshots can be specified\n";
+	print "\t--snapshot1: The name(s) of the dot graph output containing requests from\n" . 
+        "\t the problem snapshot(s).  Up to 10 problem snapshots can be specified. (OPTIONAL)\n";
 	print "\t--min_k: The minimum number of clusters to explore (OPTIONAL)\n";
 	print "\t--max_k: The maximum number of clusters to explore (OPTIONAL)\n";
 	print "\t--k_interval: The increment step between min_k and max_k (OPTIONAL)\n";
