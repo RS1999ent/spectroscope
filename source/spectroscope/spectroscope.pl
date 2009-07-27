@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.5 2009/05/03 10:31:59 source Exp $
+# $cmuPDL: spectroscope.pl,v 1.6 2009/07/23 01:15:58 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -128,9 +128,8 @@ undef $g_create_clustering_input;
 # Actually cluster the requests
 ##
 if ($g_pass_through) {
-    my $pass_through_module = new PassThrough("$g_convert_reqs_output_dir/input_vector.dat",
-                                              "$g_convert_reqs_output_dir/distance_matrix.dat",
-                                              "$g_convert_reqs_output_dir");
+    my $pass_through_module = new PassThrough($g_convert_reqs_output_dir, 
+                                              $g_convert_reqs_output_dir);
     
     $pass_through_module->cluster();
 } else {
@@ -145,19 +144,17 @@ if ($g_pass_through) {
 #                           "$g_convert_reqs_output_dir/edge_distribution_comparisons.dat");
                            
 
-my $g_print_requests = new PrintRequests("$g_convert_reqs_output_dir",
+my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
                                          \@g_snapshot0_files,
                                          \@g_snapshot1_files);
 
 
 my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
-                                                            $g_cluster_output_ranking,
                                                             $g_print_requests,
                                                             $g_output_dir);
 
 print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_clusters();
-
+$g_parse_clustering_results->print_ranked_clusters($g_cluster_output_ranking);
    
 
 ### Helper functions #######

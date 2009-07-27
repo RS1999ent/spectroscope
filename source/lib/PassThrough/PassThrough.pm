@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PassThrough.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+# $cmuPDL: PassThrough.pm,v 1.2 2009/04/26 23:48:44 source Exp $
 ##
 # This perl modules implements a "ClusteringPassThrough"
 # that is, it generates as many clusters as input
@@ -20,6 +20,7 @@ package PassThrough;
 
 use strict;
 use Getopt::Long;
+use Test::Harness::Assert;
 
 
 #### Private functions #######################
@@ -44,32 +45,20 @@ my $_remove_existing_files = sub {
 #### API functions ###############################
 
 sub new {
+    assert(scalar(@_) == 3);
+    my ($proto, $input_dir, $output_dir) = @_;
 
-    # Check input parameters 
-    if($#_ != 3) {
-        print "Invalid number of arguments to PassThrough\n";
-        assert(0);
-    }
-
-    my $proto = shift;
-    my $input_vector_file;
-    my $distance_matrix_file;
-    my $output_dir;
-
-    $input_vector_file = shift;
-    $distance_matrix_file = shift;
-    $output_dir = shift;
     my $class = ref($proto) || $proto;
 
     my $self = {};
 
-    $self->{INPUT_VECTOR_FILE} = $input_vector_file;
-    $self->{DISTANCE_MATRIX_FILE} = $distance_matrix_file;
+    $self->{INPUT_VECTOR_FILE} = "$input_dir/input_vector.dat";
+    $self->{DISTANCE_MATRIX_FILE} = "$input_dir/distance_matrix.dat";
     $self->{CLUSTER_FILE} = "$output_dir/clusters.dat";
 
     bless($self, $class);
     return $self;
-};
+}
 
 
 ##
@@ -81,7 +70,7 @@ sub new {
 sub do_output_files_exist {
     my $self = shift;
 
-    if (-e($self->{CLUSTER_FILE})) {
+    if ( -e($self->{CLUSTER_FILE})) {
         return 1;
     }
 

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.3 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: DotHelper.pm,v 1.4 2009/04/27 20:14:44 source Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -14,7 +14,25 @@ use Test::Harness::Assert;
 use diagnostics;
 require Exporter;
 
-our @EXPORT_OK= qw(parse_nodes_from_string parse_nodes_from_file);
+our @EXPORT_OK= qw(parse_nodes_from_string parse_nodes_from_file find_dot_node);
+
+##
+# Returns 1 if the node passed in to this function exists in the graph spcified
+#
+# @param node: A string indicating the name of the node
+# @param request: A string containing a graph in DOT format
+##
+sub find_dot_node {
+
+    assert(scalar(@_) == 2);
+    my ($node, $request) = @_;
+
+    if ($request =~ /$node/) {
+        return 1;
+    } 
+
+    return 0;
+}
 
 
 ##

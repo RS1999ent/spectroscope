@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.11 2009/05/19 06:32:28 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.12 2009/06/27 08:21:25 source Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -254,7 +254,6 @@ my $_create_edge_comparison_files = sub {
             $max_row_num = max($row_num, $max_row_num);
             my $edge_latencies = $edge_info->{$key};
 
-
             foreach(@$edge_latencies) {
                 my $col_num = $self->$_get_edge_col_num($key,\%col_num_hash);
                 my $filehandle = $fhs[$snapshot_ptr->[0]];
@@ -439,6 +438,41 @@ my $_get_global_ids = sub {
 
 
 ##
+# Returns the global IDs of all requests assugned to a cluster
+#
+# @param self: The object-container
+# @param cluster_id: The global IDs of requests that
+#  belong to this cluster will be returned
+#
+# @return A reference to an array of global IDs
+##
+my $_get_global_ids_of_reqs_in_cluster = sub {
+    
+    assert(scalar(@_) ==2);
+    my ($self, $cluster_id) = @_;
+    
+    my $cluster_assignment_hash = $self->{CLUSTER_HASH};
+    
+    my @input_vec_ids = split(/,/, $cluster_assignment_hash->{$cluster_id});
+    
+    my @global_ids;
+    
+    # Iterate through the input vectors that are assigned to each cluster
+    # and build a list of matching global IDs.
+    foreach(@input_vec_ids) {
+        
+        my $input_vector_id = $_;
+        # Get the global IDs that map to this input_vec_id
+        my $input_vec_global_ids = $self->$_get_global_ids($input_vector_id);
+        # Add global ids to the list of global IDs for this cluster
+        @global_ids = (@global_ids, @$input_vec_global_ids);
+    }
+    
+    return \@global_ids;
+};
+    
+
+##
 # Computes statistics on each cluster and stores them in 
 # $self->{CLUSTER_INFO_HASH}.  Specifically, 
 # $self->{CLUSTER_INFO_HASH} stores a hash for each cluster
@@ -470,21 +504,7 @@ my $_compute_cluster_info = sub {
     foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
         print "Processing statistics for Cluster $key...\n";
 
-        my @input_vec_ids = split(/,/, $cluster_assignment_hash->{$key});
-
-        my %this_cluster_info;
-        my @global_ids;
-
-        # Iterate through the input vectors that are assigned to each cluster
-        # and build a list of matching global IDs.
-        foreach(@input_vec_ids) {
-
-            my $input_vector_id = $_;
-            # Get the global IDs that map to this input_vec_id
-            my $input_vec_global_ids = $self->$_get_global_ids($input_vector_id);
-            # Add global ids to the list of global IDs for this cluster
-            @global_ids = (@global_ids, @$input_vec_global_ids);
-        }
+        my @global_ids = @{$self->$_get_global_ids_of_reqs_in_cluster($key)};
 
         # Compute statistics for this cluster
         my $snapshot_frequencies = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
@@ -504,6 +524,8 @@ my $_compute_cluster_info = sub {
         my $edge_info = $self->$_compute_edge_info(\@global_ids, $key);
         
         # Fill in the %this_cluster_info_hash and add it to the the %cluster_info_hash
+        my %this_cluster_info;
+
         $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
         $this_cluster_info{AVG_RESPONSE_TIMES} = [$s0_mean_and_stddev->[0],
                                                     $s1_mean_and_stddev->[0]];
@@ -552,18 +574,19 @@ my $_load_files_into_hashes = sub {
     
     # load $self->{CLUSTERS_FILE};
     my %cluster_hash;
-    my $cluster_num = 1;
+    my $cluster_num = 0;
     while(<$clusters_fh>) {
+        $cluster_num++;
         chomp;
         my @cluster_items = split(' ', $_);
         my $hash_item = join(',', @cluster_items);
         
         $cluster_hash{$cluster_num} = $hash_item;
-        $cluster_num++;
     }
     close($clusters_fh);
     $self->{CLUSTER_HASH} = \%cluster_hash;
-    
+    $self->{NUM_CLUSTERS} = $cluster_num;
+
     # load $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH}
     my %input_vec_to_global_ids_hash;
     my $input_vec_num = 1;
@@ -670,11 +693,11 @@ my $_sort_clusters_by_frequency_difference = sub {
 # @param self: The object container
 ##
 my $_sort_clusters_wrapper = sub { 
-    assert(scalar(@_) == 1);
+    assert(scalar(@_) == 2);
+    my ($self, $rank_format) = @_;
 
-    my $self = shift;
 
-    if ($self->{RANK_FORMAT} =~ /req_difference/) {
+    if ($rank_format =~ /req_difference/) {
         $self->$_sort_clusters_by_frequency_difference($a, $b);
     } else {
         # Nothing else supported now :(
@@ -713,15 +736,11 @@ my $_sort_clusters_wrapper = sub {
 ##
 sub new {
 
-    assert(scalar(@_) == 5);
+    assert(scalar(@_) == 4);
 
-    my ($proto, $convert_data_dir, $rank_format, 
+    my ($proto, $convert_data_dir, 
         $print_graphs_class, $output_dir) = @_;
 
-    assert ($rank_format =~ m/req_difference/);
-    # Will add in the following later.
-    #        $rank_format eq "avg_latency_difference" ||
-    #        $rank_foramt eq "total_latency_difference");
 
     my $class = ref($proto) || $proto;
     my $self = {};
@@ -729,7 +748,6 @@ sub new {
     $self->{CLUSTERS_FILE} = "$convert_data_dir/clusters.dat",
     $self->{INPUT_VECTOR_FILE} = "$convert_data_dir/input_vector.dat",
     $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$convert_data_dir/input_vec_to_global_ids.dat",;
-    $self->{RANK_FORMAT} = $rank_format;
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
     
@@ -739,13 +757,14 @@ sub new {
     $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH} = undef;
     $self->{INPUT_HASHES_LOADED} = 0;
 
+    $self->{NUM_CLUSTERS} = undef;
+
     # These hashes are computed by the cluster
     $self->{CLUSTER_INFO_HASH} = undef;
 
     # Some derived outputs
     $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
     $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interm_cluster_data";
-    
     
     bless($self, $class);
     
@@ -766,7 +785,9 @@ sub clear {
     # Undef hashes of input files
     undef $self->{CLUSTER_HASH};
     undef $self->{INPUT_VEC_TO_GLOBAL_IDS_HASH};
-    undef $self->{INPUT_HASHES_LOADED} = 0;
+    $self->{INPUT_HASHES_LOADED} = 0;
+
+    undef $self->{NUM_CLUSTERS};
 
     # undef hashes computed by this cluster
     undef $self->{CLUSTER_INFO_HASH};
@@ -778,10 +799,15 @@ sub clear {
 #
 # @param self: The object-container
 ##
-sub print_clusters {
-    assert(scalar(@_) == 1);
+sub print_ranked_clusters {
+    assert(scalar(@_) == 2);
     
-    my $self = shift;
+    my ($self, $rank_format) = @_;
+
+    assert ($rank_format =~ m/req_difference/);
+    # Will add in the following later.
+    #        $rank_format eq "avg_latency_difference" ||
+    #        $rank_foramt eq "total_latency_difference");
     
     if($self->{INPUT_HASHES_LOADED} == 0) {
         $self->$_load_files_into_hashes();
@@ -795,10 +821,10 @@ sub print_clusters {
     
     # First print the text file
     open(my $ranked_clusters_fh, 
-         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$self->{RANK_FORMAT}.dat")
+         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$rank_format.dat")
         or die ("Could not open ranked clusters file: $!\n");
     open(my $ranked_clusters_graph_fh,
-         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$self->{RANK_FORMAT}.dot")
+         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$rank_format.dot")
         or die("Could not open ranked clusters file\n");
     
     # Print header to ranked_cluster_fh
@@ -807,7 +833,7 @@ sub print_clusters {
     
     # Print information about each cluster ranked appropriately
     my $rank = 1;
-    for my $key (sort {$self->$_sort_clusters_wrapper()} keys %$cluster_info_hash) {
+    for my $key (sort {$self->$_sort_clusters_wrapper($rank_format)} keys %$cluster_info_hash) {
         
         my $this_cluster_info_hash = $cluster_info_hash->{$key};
         
@@ -832,13 +858,54 @@ sub print_clusters {
         
     for my $key (sort {$a <=> $b} keys %$cluster_info_hash) {
         my $this_cluster_info_hash = $cluster_info_hash->{$key};
-        
-
     }
     close($ranked_clusters_graph_fh);
     
 }
 
+
+##
+# Returns the total number of clusters that exist
+# 
+# @param self: The object-container
+#
+# @return: The number of clusters managed by this object
+##
+sub get_num_clusters {
+
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    if($self->{INPUT_HASHES_LOADED} == 0) {
+        $self->$_load_files_into_hashes();
+    }
+    assert(defined $self->{NUM_CLUSTERS});
+    return $self->{NUM_CLUSTERS};
+}
+
+
+##
+# Returns the total number of requests assigned to a cluster
+#
+# @param self: The object container
+# @param cluster_id: The number of requests belonging to this
+#  cluster will be returned
+#
+# @return: The number of requests belonging to the cluster
+##
+sub get_num_requests_in_cluster {
+
+    assert(scalar(@_) == 2);
+    my ($self, $cluster_id) = @_;
+
+    if($self->{INPUT_HASHES_LOADED} == 0) {
+        $self->$_load_files_into_hashes();
+    }
+
+    my @global_ids = @{$self->$_get_global_ids_of_reqs_in_cluster($cluster_id)};
+    
+    return scalar(@global_ids);
+}
 
 ##
 # Returns the cluster representative of a cluster, given its ID
@@ -854,12 +921,9 @@ sub print_clusters {
 # a string containing the representative
 ##
 sub get_global_id_of_cluster_rep {
-
     assert(scalar(@_) == 2);
-    
-    my $self = shift;
-    my $cluster_id = shift;
-
+    my ($self, $cluster_id) = @_;
+    print "$cluster_id\n";
     if($self->{INPUT_HASHES_LOADED} == 0) {
         $self->$_load_files_into_hashes();
     }
@@ -870,12 +934,38 @@ sub get_global_id_of_cluster_rep {
     my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
 
     return $global_ids[0];
-
 }
 
 
 ##
-# Returns the global ID of a cluster
+# Returns the cluster representative graph in a string
+#
+# @param self: The object-container
+# @param cluster_id: The cluster whose representative will
+#  be returned
+#
+# @return: A string containing the cluster representative
+##
+sub get_cluster_representative {
+  
+    assert(scalar(@_) == 2);
+    my ($self, $cluster_id) = @_;
+
+    if($self->{INPUT_HASHES_LOADED} == 0) { 
+        $self->$_load_files_into_hashes();
+    }
+
+    my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
+
+    my $cluster_rep_id  = get_global_id_of_cluster_rep($self, $cluster_id);
+    my $cluster_rep = $print_graphs->get_global_id_indexed_request($cluster_rep_id);
+    
+    return $cluster_rep;
+}
+  
+
+##
+# Returns the global IDs of requests in a cluster
 #
 # @param self: The object container
 # @param cluster_id: The cluster ID

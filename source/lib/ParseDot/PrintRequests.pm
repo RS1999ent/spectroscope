@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.12 2009/05/05 22:57:58 source Exp $
+# $cmuPDL: PrintRequests.pm,v 1.13 2009/07/23 01:15:58 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -495,6 +495,27 @@ sub print_global_id_indexed_request {
     }
 
     print $output_fh "$modified_req\n";
+}
+
+
+##
+# Returns a global ID indexed request in string-format
+#
+# @param self: The object container
+# @param global_id: The global_id of the request
+# 
+# @return a Sring containing the request
+##
+sub get_global_id_indexed_request { 
+
+    assert(scalar(@_) == 2);
+    my ($self, $global_id) = @_;
+
+    my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
+    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
+    my $request = $self->$_get_local_id_indexed_request($local_id, $snapshot, $filename_idx);
+
+    return $request;
 }
 
 
