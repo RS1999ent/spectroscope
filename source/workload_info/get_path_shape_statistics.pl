@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: get_path_shape_statistics.pl,v $
+# $cmuPDL: get_path_shape_statistics.pl,v 1.1 2009/07/27 20:08:21 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -46,7 +46,7 @@ my $g_pass_through_output_dir = "/tmp/path_shape_statistics/";
 my @g_graph_files_ref;
 
 # Output directory location
-my $g_output_dir;
+my $g_temp_output_dir;
 
 # Directory in which intermediate output fill be placed
 my $g_convert_reqs_dir;
@@ -66,12 +66,13 @@ my %g_group_hash;
 # Prints usage for this script
 ##
 sub print_usage {
-    print "get_shape_statistics.pl --graphs_file --config_file\n" .
-        "\t--output_dir\n";
+    print "get_shape_statistics.pl --graphs_file --config_file --output_temp_dir\n";
     print "\t--graphs_file: Names of up to 10 files containing request graphs\n";
     print "\t--config_file: The configuration file indicating which request-types\n" .
         "\t\tfor which to find path shapes and their grouping\n";
-    print "\t--output_dir: The directory in which to place output\n";
+    print "\t--temp_output_dir: The directory in which to place temporary output\n" .
+        "\t\tIf this dir exists, the data in it will be used and not re-computed.\n" .
+        "\t\tThis directory is safe to delete after the program has finished\n";
 }
         
         
@@ -81,20 +82,20 @@ sub print_usage {
 sub parse_options {
     
     GetOptions("graphs_file=s{1,10}"  =>  \@g_graph_files_ref,
-               "config_file=s"            =>  \$g_config_file,
-               "output_dir=s"             =>  \$g_output_dir);
+               "config_file=s"        =>  \$g_config_file,
+               "temp_output_dir=s"    =>  \$g_temp_output_dir);
 
-    if( !defined $g_output_dir 
+    if( !defined $g_temp_output_dir 
         || !defined $g_graph_files_ref[0]
-        || !defined $g_output_dir) {
+        || !defined $g_temp_output_dir) {
         
         print_usage();
         exit(-1);
     }
-    $g_convert_reqs_dir = "$g_output_dir/convert_reqs";
+    $g_convert_reqs_dir = "$g_temp_output_dir/convert_reqs";
 
-    system("mkdir -p $g_output_dir") == 0 
-        or die("Could not create $g_output_dir\n");
+    system("mkdir -p $g_temp_output_dir") == 0 
+        or die("Could not create $g_temp_output_dir\n");
     system("mkdir -p $g_convert_reqs_dir") == 0 
         or die("Could not create $g_convert_reqs_dir");
 
@@ -153,7 +154,7 @@ sub create_parse_clustering_results_obj {
                                            \@g_graph_files_ref);
     my $parse_clustering_results = new ParseClusteringResults($g_convert_reqs_dir,
                                                               $print_requests,
-                                                              $g_output_dir);
+                                                              $g_temp_output_dir);
     undef $print_requests;
     
     return $parse_clustering_results;

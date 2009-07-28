@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.7 2009/05/04 23:14:23 source Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.8 2009/07/23 01:15:58 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -90,9 +90,6 @@ my $_print_alphabet_mapping = sub {
 ##
 my $_print_string_rep_hash = sub {
     my $self = shift;
-    
-    print "$self->{INPUT_VECTOR_FILE}\n\n\n\n";
-    print "$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}\n\n\n";
     
 	open(my $string_rep_fh, ">$self->{INPUT_VECTOR_FILE}");
 	open(my $string_rep_mapping_fh, ">$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}");

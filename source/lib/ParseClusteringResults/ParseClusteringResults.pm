@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.12 2009/06/27 08:21:25 source Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.13 2009/07/27 20:08:21 rajas Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -921,9 +921,10 @@ sub get_num_requests_in_cluster {
 # a string containing the representative
 ##
 sub get_global_id_of_cluster_rep {
+
     assert(scalar(@_) == 2);
     my ($self, $cluster_id) = @_;
-    print "$cluster_id\n";
+
     if($self->{INPUT_HASHES_LOADED} == 0) {
         $self->$_load_files_into_hashes();
     }
