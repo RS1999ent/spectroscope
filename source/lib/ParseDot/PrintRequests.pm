@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.13 2009/07/23 01:15:58 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.14 2009/07/27 20:08:21 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -217,12 +217,12 @@ my $_overlay_cluster_info = sub {
     $summary_node = $summary_node . 
         sprintf("label=\"Cluster ID: %d\\nAvg. response times: %dus / %dus\\n",
                 $cluster_info_hash_ptr->{ID}, 
-                int($cluster_info_hash_ptr->{AVG_RESPONSE_TIMES}->[0] + .5),
-                int($cluster_info_hash_ptr->{AVG_RESPONSE_TIMES}->[1] + .5));
+                int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{AVG_LATENCIES}->[0] + .5),
+                int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{AVG_LATENCIES}->[1] + .5));
 
     $summary_node = $summary_node . sprintf("Stddevs: %dus / %dus\\n",
-                                            int($cluster_info_hash_ptr->{STDDEVS}->[0] + .5),
-                                            int($cluster_info_hash_ptr->{STDDEVS}->[1] + .5));
+                                            int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{STDDEVS}->[0] + .5),
+                                            int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{STDDEVS}->[1] + .5));
 
     my $total_reqs = $cluster_info_hash_ptr->{FREQUENCIES}->[0] + $cluster_info_hash_ptr->{FREQUENCIES}->[1];
     my $percent_reqs_s0 = $cluster_info_hash_ptr->{FREQUENCIES}->[0]/$total_reqs*100;
@@ -237,15 +237,16 @@ my $_overlay_cluster_info = sub {
     # Split the graph into lines and insert the summary node after the "Digraph G{"
     my @mod_graph_array = split(/\n/, $request);
     @mod_graph_array = ($mod_graph_array[0], $mod_graph_array[1], $summary_node, @mod_graph_array[2..$#mod_graph_array]);
-    
+
     # Iterate through edges of graph in the outer loop to implement "location-agnostic"
     # edge comparisons.  Since the edge_info_hash has unique entries for each edge name,
     # the same aggregate info might be overlayed on edges that occur multiple times
     # in the request.
-    my $edge_info_hash = $cluster_info_hash_ptr->{EDGE_INFO};
+    my $edge_info_hash = $cluster_info_hash_ptr->{EDGE_LATENCY_STATS};
+
     for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
         my $line = $mod_graph_array[$i];
-        
+
         if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) { #\[label=\"R: ([0-9\.]+) us\"\]/) {
             
             my $src_node_id = "$1.$2";
@@ -255,7 +256,7 @@ my $_overlay_cluster_info = sub {
             my $dest_node_name = $node_name_hash{$dest_node_id};
             
             my $found = 0;
-            for my $key (keys %$edge_info_hash) {
+            for my $key (keys %{$edge_info_hash}) {
                 my $edge_name = $key;
 
                 if (DEBUG) {
@@ -605,8 +606,27 @@ sub get_snapshot_frequencies_given_global_ids {
 
     return \@frequencies;
 }
-        
 
+##
+# Returns the number of requests in S0 and S1.                                                                   
+#
+# @return a pointer to an array w/two elements.
+#  ret[0] contains the number of requests from S0 and
+#  ret[1] contains the number of requests from S1
+##
+sub get_snapshot_frequencies {
+
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    my @ret;
+    $ret[0] = keys %{$self->{SNAPSHOT0_INDEX_HASH}};
+    $ret[1] = keys %{$self->{SNAPSHOT1_INDEX_HASH}};
+
+    return \@ret;
+}
+    
+    
 ##
 # Returns the response times seen for the requests passed in.
 # The return structure is a hash, which is constructed as follows: 
@@ -746,6 +766,7 @@ sub get_req_structure_given_global_id {
     #print Dumper %$graph_container_hash_ptr;
 
     return $graph_container_hash_ptr;
-}                                                                   
-    
+}
+
+
 1;

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.13 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.14 2009/07/28 20:22:51 rajas Exp $
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -22,6 +22,8 @@ use GD::Graph::boxplot;
 use Statistics::Descriptive;
 use List::Util qw[max sum];
 use diagnostics;
+use Data::Dumper;
+
 
 #### Global constants #############
 
@@ -45,12 +47,9 @@ no define DEBUG =>;
 # belong to snapshot1 within this cluster.
 ##
 my $_print_boxplots = sub {
-    assert(scalar(@_) == 4);
 
-    my $self = shift;
-    my $cluster_id = shift;
-    my $s0_values = shift;
-    my $s1_values = shift;
+    assert(scalar(@_) == 4);
+    my ($self, $cluster_id, $s0_values, $s1_values) = @_;
 
     # Create a new boxplot object
     my $boxplot = new GD::Graph::boxplot( );
@@ -90,7 +89,6 @@ my $_print_boxplots = sub {
     my @boxplot_data = (\@labels,
                         \@values);
 
-
     my $gd = $boxplot->plot(\@boxplot_data);
 
     # Print the boxplot to the appropriate output directory
@@ -102,44 +100,8 @@ my $_print_boxplots = sub {
 };
 
 
-##
-# Finds the mean and standard deviation of the data passed in
-#
-# @param self: The object container
-# @param data_ptr: A pointer to an array of data
-# 
-# @return: A pointer to an array, where the first element is
-# the mean and the second element is the standard deviation
-##
-my $_find_mean_and_stddev = sub {
-    my $self = shift;
-    my $data_ptr = shift;
-    my @mean_and_stddev;
-    
-    if(scalar(@$data_ptr) == 0) {
-        $mean_and_stddev[0] = 0;
-        $mean_and_stddev[1] = 0;
-        return \@mean_and_stddev;
-    }
-
-    my $stat = Statistics::Descriptive::Full->new();
-    $stat->add_data($data_ptr);        
-    $mean_and_stddev[0] = $stat->mean();
-
-    # Can only calculate standard deviation if more than 2 points exist
-    if(scalar(@$data_ptr) < 2) {
-        $mean_and_stddev[1] = 0;
-    } else {
-        $mean_and_stddev[1] = $stat->standard_deviation();
-    }
-
-    return \@mean_and_stddev
-};
-
-
 ## 
-# Returns the row number to use when writing a sparse matrix
-# of individual edge latencies.
+# Returns the row number to use when writing a sparse matrix of individual edge latencies.
 #
 # @note: Row counter is one indexed.
 #
@@ -175,8 +137,7 @@ my $_get_edge_row_num = sub {
 
 
 ##
-# Returns the column number to use when writing a sparse matrix
-# of individual edge latencies.
+# Returns the column number to use when writing a sparse matrix of individual edge latencies.
 #
 # @note: Column counter is one indexed.
 #
@@ -206,39 +167,32 @@ my $_get_edge_col_num = sub {
     
 
 ##
-# Creates files that Matlab can use to compare the distribution
-# of edge latencies between edges that come from snapshot0 and
-# edges that come from snapshot1.  These files are in matlab
-# sparse matrix format.
+# Creates files that specify that data distributions of edges for the global_ids
+# passed in.  One file is created per snapshot and each row represents an edge.  
+#
+# @note Row and Column numbers are 1-indexed.
 #
 # @param self: The object container
-# @param global_ids_ptr: A pointer to the requests for which
-#  constituent edges should be compared
-# @param s0_edge_file: This file will be populated with a 
-# sparce matrix of snapshot0 edge latencies 
-# @param s1_edge_file: This file will be populated with a
-# sparse matrix of snapshot1 edge latencies
-# @param edge_name_to_row_num_hash_ptr: This will be populated w/
-# data that maps edge names to row numbers in the sparse matrices
-# @param row_num_to_edge_name_hash_ptr: This will be populated w/
-# data that maps row numbers back to edge names.
+# @param global_ids_ptr: Edge latencies for requests specified by these IDs will be compared
+# @param s0_edge_file: This file will be populated with a sparse matrix of s0 edge latencies
+# @param s1_edge_file: This file will be populated with a sparse matrix of s1 edge latencies
+# @param edge_name_to_row_num_hash_ptr: This will map edge names to their assigned row number
+# @param row_num_to_edge_name_hash_ptr: This will map row numbers to their assigned column
 ##
 my $_create_edge_comparison_files = sub {
     assert(scalar(@_) == 6);
-
-    my $self = shift;
-    my $global_ids_ptr = shift;
-    my $s0_edge_file = shift;
-    my $s1_edge_file = shift;
-    my $edge_name_to_row_num_hash_ptr = shift;
-    my $row_num_to_edge_name_hash_ptr = shift;
+    my ($self, $global_ids_ptr, $s0_edges_file, $s1_edges_file, 
+        $edge_name_to_row_num_hash_ptr, $row_num_to_edge_name_hash_ptr) = @_;
 
     my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
 
     my %col_num_hash;    
 
-    open(my $s0_edge_fh, ">$s0_edge_file") or die $!;
-    open(my $s1_edge_fh, ">$s1_edge_file") or die $!;
+    open(my $s0_edge_fh, ">$s0_edges_file") or 
+        die "create_edge_comparison_files(): could not open $s0_edges_file: $!\n";
+    open(my $s1_edge_fh, ">$s1_edges_file") or 
+        die "create_edge_comparison_files(): could not $s1_edges_file: $!\n";;
+
     my @fhs = ($s0_edge_fh, $s1_edge_fh);
 
     my $max_row_num = 0;
@@ -268,35 +222,30 @@ my $_create_edge_comparison_files = sub {
 
 
 ##
-# Compares CDFs of edge latencies by calling Matlab.  Writes an output
-# file while is formatted as follows: 
-#  <edge number>: <changed> <p-value>> <avg. latency s0> <stddev s0> <avg. latency s1> <stddev s1>
+# Runs a hypothesis test comparing the data distributions in corresponding rows
+# of the input files.  Results of the hypothesis test are written to the output file
+# specified and is of the following format: 
+# 
+#  <row number>: <changed> <p-value>> <avg. latency s0> <stddev s0> <avg. latency s1> <stddev s1>
 #
-# Where "changed" is 1 if the edge latencies are statistically different between
-# s0 and 1, as determined by the Kologmov - Smirginoff test.
-#
+# Where "changed" is 1 if the distributions for the data in row i of the input files
+# are statistically different.  Note that rows are 1-indexed.
+# 
 # @param self: The object container
-# @param s0_edges_file: Path to the sparse matrix of edge
-# latencies in s0.  Each row is an edge and each column a latency
-# @param s1_edges_file; Path to the sparse matrix of edge
-# latencies in s1.  Each row is an edge and each column a latency
-# @param output_file: The path to the file where edge comparison
-# information will be written
-#
+# @param null_distrib-file: Path to the file containing the null data distributions
+# @param test_distrib_file: Path to the file containing the test distributions
+# @param output_file: The path to the file where results of the hypothesis test
+# will be written
 ##
-my $_compare_edges = sub {
+my $_run_hypothesis_test = sub {
     assert(scalar(@_) == 4);
-
-    my $self = shift;
-    my $s0_edges_file = shift;
-    my $s1_edges_file = shift;
-    my $output_file = shift;
+    my ($self, $null_distrib_file, $test_distrib_file, $output_file) = @_;
     
     my $curr_dir = getcwd();
     chdir '../lib/ParseClusteringResults';
 
-    system("matlab -nojvm -nosplash -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"".
-           "|| matlab -nodisplay -r \"compare_edges(\'$s0_edges_file\', \'$s1_edges_file\', \'$output_file\'); quit\"") == 0
+    system("matlab -nojvm -nosplash -nodisplay -r \"compare_edges(\'$null_distrib_file\', \'$test_distrib_file\', \'$output_file\'); quit\"".
+           "|| matlab -nodisplay -r \"compare_edges(\'$null_distrib_file\', \'$test_distrib_file\', \'$output_file\'); quit\"") == 0
            or die ("Could not run Matlab compare_edges script\n");
 
     chdir $curr_dir;
@@ -304,37 +253,40 @@ my $_compare_edges = sub {
 
 
 ##
-# Reads in a file of edge comparisons of the form: 
-# <edge row number> <changed> <p-value> <avg. latency s0> stddev s0> <avg. latency s1> <stddev s1>
-# and inserts this info into an edge_info_hash, which is of the form
-
-# edge_info_hash{edge_name} = { REJECT_NULL => <value>,
-#                               P_VALUE => <value>,
-#                               AVG_LATENCIES => \@array,
-#                               STDDEVS => \@array}
-# where edge_name is "src_node_name->dest_node_name"
+# Reads in the results of the hypothesis test conducted by the
+# "_run_hypothesis_test" function and returns a reference to a hash of the form:
+#
+# hyp_test_results_hash{name} =  { REJECT_NULL         => <value>,
+#                                  P_VALUE             => <value>,
+#                                  AVG_LATENCIES       => \@array,
+#                                  STDDEVS             => \@array}
 #
 # @param self: The object container
-# @param edge_comparisons_file: The file containing edge comparisons
-# @param row_num_to_edge_name_hash: Maps row numbers in the text file
-# to edge names.
+# @param hyp_tests_results_file: The file containing results of the hypothesis test
+# @param row_num_to_edge_name_hash: (OPTIONAL) Maps row numbers in the results file
+#  to caller-specified names.  If this parameter is not specified, the keys of the hash 
+#  returned will be row numbers.  These row numbers are 1-indexed.
 #
-# @return: The edge_info_hash.
+# @return: The hyp_test_results_hash
 ##                             
-my $_load_edge_info_hash = sub {
-    assert(scalar(@_) == 3);
-    
-    my $self = shift;
-    my $edge_comparisons_file = shift;
-    my $row_num_to_edge_name_hash = shift;
+my $_load_hypothesis_test_results = sub {    
 
-    my %edge_info_hash;
+    assert(scalar(@_) == 2 || scalar(@_) == 3);
+    my ($self, $hyp_test_results_file, $row_num_to_name_hash);
+
+    if(scalar(@_) == 2) {
+        ($self, $hyp_test_results_file) = @_;
+    } else {
+        ($self, $hyp_test_results_file, $row_num_to_name_hash) = @_;
+    }
+
+    my %hyp_test_results_hash;
     
-    open(my $edge_comparisons_fh, "<$edge_comparisons_file")
-        or die ("Could not open $edge_comparisons_file: $!\n");
+    open(my $edge_comparisons_fh, "<$hyp_test_results_file")
+        or die ("Could not open $hyp_test_results_file: $!\n");
 
     while (<$edge_comparisons_fh>) {
-        # This regexp must match the output specified by compare edges
+        # This regexp must match the output specified by _run_hypothesis_test()
         if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+)/) {
             my $edge_row_num = $1;
             my $reject_null = $2;
@@ -342,26 +294,35 @@ my $_load_edge_info_hash = sub {
             my @avg_latencies = ($4, $6);
             my @stddevs = ($5, $7);
             
-            my $edge_name = $row_num_to_edge_name_hash->{$edge_row_num};
-            assert(defined $edge_name);
-            $edge_info_hash{$edge_name} = { REJECT_NULL => $reject_null,
-                                               P_VALUE => $p_value,
-                                               AVG_LATENCIES => \@avg_latencies,
-                                               STDDEVS => \@stddevs };
+            my $row_name;
+            if (defined $row_num_to_name_hash) {
+                $row_name = $row_num_to_name_hash->{$edge_row_num};
+            }
+            else {
+                $row_name = $edge_row_num;
+            }
+            assert(defined $row_name);
+
+            $hyp_test_results_hash{$row_name} = { REJECT_NULL => $reject_null,
+                                               P_VALUE        => $p_value,
+                                               AVG_LATENCIES  => \@avg_latencies,
+                                               STDDEVS        => \@stddevs };
         } else {
-            print $_;
+            print "_load_hypothesis_test_results(): Cannot parse line in" .
+                " $hyp_test_results_file\n $_";
             assert(0);
         }
     }
     
     close($edge_comparisons_fh);
     
-    return \%edge_info_hash;
+    return \%hyp_test_results_hash;
 };
 
 
 ##
-# Computes information about edges seen for a set of global IDs
+# Computes statistics about edges seen for a set of requests,
+# given their global IDs.
 # 
 # @param self: The object container
 # @param global_ids_ptr: A pointer to an array of global ids
@@ -376,7 +337,7 @@ my $_load_edge_info_hash = sub {
 #               STDDEVS => \@array}
 # where edge_name is "src_node_name->dest_node_name"
 ##
-my $_compute_edge_info = sub {
+my $_compute_edge_statistics = sub {
     assert(scalar(@_) == 3);
 
     my $self = shift;
@@ -384,7 +345,6 @@ my $_compute_edge_info = sub {
     my $cluster_id = shift;
 
     my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
-
 
     my $output_dir = $self->{INTERIM_OUTPUT_DIR};
 
@@ -399,17 +359,104 @@ my $_compute_edge_info = sub {
     my $s1_edge_file = "$output_dir/s1_cluster_$cluster_id" .
                        "_edge_latencies.dat";
     my $comparison_results_file = "$output_dir/$cluster_id" .
-                                   "_comparisons.dat";
+                                   "_edge_comparisons.dat";
     
     $self->$_create_edge_comparison_files($global_ids_ptr, $s0_edge_file, $s1_edge_file,
                                           \%edge_name_to_row_num_hash, \%row_num_to_edge_name_hash);
-    $self->$_compare_edges($s0_edge_file, $s1_edge_file, 
+    $self->$_run_hypothesis_test($s0_edge_file, $s1_edge_file, 
                            $comparison_results_file);
-    my $edge_info = $self->$_load_edge_info_hash($comparison_results_file, \%row_num_to_edge_name_hash);
+    my $edge_info = $self->$_load_hypothesis_test_results($comparison_results_file, \%row_num_to_edge_name_hash);
 
     return $edge_info;
 };
 
+
+## 
+# Creates files populated with response time data distributions for use by the 
+# run_hypothesis_test() function.  The files created are in matlab sparse-file 
+# format -- that is, each row is of the form: <row num> <column number> <response_time>.
+# row numbers and column numbers start at 1.
+#
+# Since we are only comparing one "category of things," only one row is created.
+#
+# @param self: The object container
+# @param s0_times_array_ref: Reference to an array of response-times for snapshot0
+# @param s1_times_array_ref: Reference to an array of response-times for snapshot1
+# @param s0_response_times_file: File in which response-times for s0 will be placed
+# @param s1_response_times_file: File in which response-times for s1 will be placed
+##
+my $_create_response_time_comparison_files = sub {
+    
+    assert(scalar(@_) == 5);
+    my ($self, $s0_response_times_array_ref, $s1_response_times_array_ref, 
+        $s0_response_times_file, $s1_response_times_file) = @_;
+
+    open(my $fh, ">$s0_response_times_file")
+        or die ("_create_response_time_comparison_files(): Could not open "
+                . "$s0_response_times_file.  $!\n");
+
+    for (my $i = 0; $i < @{$s0_response_times_array_ref}; $i++) {
+        # Row and column numbers start at 1!
+        printf $fh  "%d %d %f\n", 1, $i+1, $s0_response_times_array_ref->[$i];
+    }
+    close($fh);
+
+    open($fh, ">$s1_response_times_file")
+        or die ("_create_response_time_comparison_files(): Could not open "
+                . "$s1_response_times_file.  $!\n");
+
+    for (my $i = 0; $i < @{$s1_response_times_array_ref}; $i++) {
+        # Row and column numbers start at 1!
+        printf $fh "%d %d %f\n", 1, $i+1, $s1_response_times_array_ref->[$i];
+    }
+    close($fh);
+};
+    
+
+## 
+# Runs a hypothesis test comparing the distributions of the response times of
+# requests in a cluster
+#
+# @param self: The object container
+# @param s0_times_array_ref: Response times from snapshot0
+# @param s1_times_array_ref: Response times from snapshot1
+# @param cluster_id: THe cluster id
+#
+# @return: A pointer to a hash of statistics about the response times of requests 
+# from each snapshot.  This hash is structured as follows: 
+#
+# $reponse_time_stats{REJECT_NULL   => <value>,
+#                     P_VALUE       => <value>,
+#                     AVG_LATENCIES => \@array
+#                     STDDEVS       => \@array}
+##
+my $_compute_response_time_statistics = sub {
+    
+    assert(scalar(@_) == 4);
+    my ($self, $s0_times_array_ref, $s1_times_array_ref, $cluster_id) = @_;
+
+    my $output_dir = $self->{INTERIM_OUTPUT_DIR};
+    my $s0_response_times_file = "$output_dir/s0_cluster_$cluster_id" . 
+                                  "_response_time_comparisons.dat";
+    my $s1_response_times_file = "$output_dir/s1_cluster_$cluster_id" . 
+                                  "_response_time_comparisons.dat";
+    my $comparison_results_file = "$output_dir/$cluster_id" . 
+                                     "_response_time_comparisons.dat";
+
+    $self->$_create_response_time_comparison_files($s0_times_array_ref,
+                                                   $s1_times_array_ref,
+                                                   $s0_response_times_file, 
+                                                   $s1_response_times_file);
+    
+
+    $self->$_run_hypothesis_test($s0_response_times_file,
+                                 $s1_response_times_file,
+                                 $comparison_results_file);
+    my $response_time_stats = $self->$_load_hypothesis_test_results($comparison_results_file);
+
+    return $response_time_stats->{1};
+};
+    
 
 ##
 # Given an input vector id, this function returns the global ids that map to it
@@ -501,38 +548,48 @@ my $_compute_cluster_info = sub {
     my $graph_info = $self->{PRINT_GRAPHS_CLASS};
     my %cluster_info_hash;
 
+    # Get the total number of requests in each dataset
+    my $total_requests = $graph_info->get_snapshot_frequencies();
+
     foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
         print "Processing statistics for Cluster $key...\n";
 
         my @global_ids = @{$self->$_get_global_ids_of_reqs_in_cluster($key)};
 
-        # Compute statistics for this cluster
+        # Get frequencies and probability of occurence of this cluster in each snapshot
         my $snapshot_frequencies = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
-        
+
+        my @snapshot_probabilities;
+
+        $snapshot_probabilities[0] = 
+            ($total_requests->[0] > 0) ? $snapshot_frequencies->[0]/$total_requests->[0]: 0;
+        $snapshot_probabilities[1] = 
+            ($total_requests->[1] > 0) ? $snapshot_frequencies->[1]/$total_requests->[1]: 0;
+
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
-
-
-        my $s0_mean_and_stddev = $self->$_find_mean_and_stddev($response_times->{S0_RESPONSE_TIMES});
-
-        my $s1_mean_and_stddev = $self->$_find_mean_and_stddev($response_times->{S1_RESPONSE_TIMES});
-
+        
         $self->$_print_boxplots($key, 
                                 $response_times->{S0_RESPONSE_TIMES}, 
                                 $response_times->{S1_RESPONSE_TIMES});
+
+        my $response_time_stats = 
+            $self->$_compute_response_time_statistics($response_times->{S0_RESPONSE_TIMES},
+                                                      $response_times->{S1_RESPONSE_TIMES},
+                                                      $key);
+
         undef $response_times;
 
-        my $edge_info = $self->$_compute_edge_info(\@global_ids, $key);
+        my $edge_latency_stats = $self->$_compute_edge_statistics(\@global_ids, $key);
         
         # Fill in the %this_cluster_info_hash and add it to the the %cluster_info_hash
         my %this_cluster_info;
-
-        $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
-        $this_cluster_info{AVG_RESPONSE_TIMES} = [$s0_mean_and_stddev->[0],
-                                                    $s1_mean_and_stddev->[0]];
-        $this_cluster_info{STDDEVS} = [$s0_mean_and_stddev->[1],
-                                             $s1_mean_and_stddev->[1]];
-        $this_cluster_info{EDGE_INFO} = $edge_info;
         
+        $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
+        $this_cluster_info{SNAPSHOT_PROBS} = \@snapshot_probabilities;
+        
+        $this_cluster_info{RESPONSE_TIME_STATS} = $response_time_stats;
+        $this_cluster_info{EDGE_LATENCY_STATS} = $edge_latency_stats;
+    
         $this_cluster_info{ID} = $key;
         
         $cluster_info_hash{$key} = \%this_cluster_info;
@@ -764,8 +821,14 @@ sub new {
 
     # Some derived outputs
     $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
-    $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interm_cluster_data";
+    $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interim_cluster_data";
+
+    # Create the interim output directory
+    system("mkdir -p $self->{INTERIM_OUTPUT_DIR}") == 0 or 
+        die ("ParseClusteringResults.pm: new: Could not create" .
+             " $self->{INTERIM_OUTPUT_DIR}.  $!\n");
     
+
     bless($self, $class);
     
     return $self;
@@ -833,13 +896,14 @@ sub print_ranked_clusters {
     
     # Print information about each cluster ranked appropriately
     my $rank = 1;
-    for my $key (sort {$self->$_sort_clusters_wrapper($rank_format)} keys %$cluster_info_hash) {
+    for my $key (sort {$self->$_sort_clusters_wrapper($rank_format)} keys %{$cluster_info_hash}) {
         
         my $this_cluster_info_hash = $cluster_info_hash->{$key};
         
         my $freqs = $this_cluster_info_hash->{FREQUENCIES};
-        my $avg_response_times = $this_cluster_info_hash->{AVG_RESPONSE_TIMES};
-        my $stddevs = $this_cluster_info_hash->{STDDEVS};
+        my $avg_response_times = $this_cluster_info_hash->{RESPONSE_TIME_STATS}->{AVG_LATENCIES};
+
+        my $stddevs = $this_cluster_info_hash->{RESPONSE_TIME_STATS}->{STDDEVS};
         
         # Write rank cluster_id s0_frequency s1_frequency s0_avg_lat s0_stddev s1_avg_lat s1_stddev
         printf $ranked_clusters_fh "%-15d %-15d %-15d %-15d %-12.3f %-12.3f %-12.3f %-12.3f\n",
