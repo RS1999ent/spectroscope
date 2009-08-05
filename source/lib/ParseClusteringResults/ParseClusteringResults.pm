@@ -1,6 +1,7 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.14 2009/07/28 20:22:51 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.15 2009/08/04 07:23:36 rajas Exp $
+
 ##
 # This Perl module implements routines for parsing the results
 # of a clustering operation.  It takes in as input the 
@@ -29,6 +30,30 @@ use Data::Dumper;
 
 # Import value of DEBUG if defined
 no define DEBUG =>;
+
+# Denotes that this cluster is not mutated
+my $NO_MUTATION = 0x000;
+
+# Denotes a structural mutation
+my $STRUCTURAL_MUTATION =  0x001;
+
+# Denotes an explicit originating cluster
+my $ORIGINATING_CLUSTER = 0x010;
+
+# Denotes a response-time change
+my $RESPONSE_TIME_CHANGE = 0x100;
+
+# Masks out RESPONSE_TIME_MUTATION info
+my $MUTATION_TYPE_MASK = 0x011;
+
+# Masks out the mutation type
+my $RESPONSE_TIME_MASK = 0x100;
+
+# if p(r|problem)/p(r|non-problem) > g_sensitivity
+# then r is a structural mutation
+# if p(r|non-problem)/p(r|problem) > g_sensitivity
+# then r is a originating cluster
+my $g_sensitivity = 2;
 
 
 #### Private functions ############
@@ -517,8 +542,65 @@ my $_get_global_ids_of_reqs_in_cluster = sub {
     
     return \@global_ids;
 };
-    
 
+
+##
+# Identifies the type of mutation of a cluster.  Inserts this information
+# into $self->{CLUSTER_INFO_HASH}->{MUTATION_INFO}.
+# 
+# @param self: The object container
+# @param this_cluster_info_hash_ref: A reference to hash containing statistics
+#  about the cluster for which we are determining the mutation type
+#
+# @return: An integer denoting the type of the mutation
+
+#                    
+##
+my $_identify_mutation_type = sub {
+
+    assert(scalar(@_) == 1);
+    my ($self, $this_cluster_info_hash_ref) = @_;
+    
+    my $snapshot_probs = $this_cluster_info_hash_ref->{SNAPSHOT_PROBS};
+    my $mutation_type;
+
+    # Identify structural mutations and originating clusters
+    if($snapshot_probs->[0] > 0 && $snapshot_probs->[1] > 0) {
+            if ($snapshot_probs->[1]/$snapshot_probs->[0] > $g_sensitivity) {
+                $mutation_type = $STRUCTURAL_MUTATION;
+            } elsif ($snapshot_probs->[0]/$snapshot_probs->[1] > $g_sensitivity) {
+                $mutation_type = $ORIGINATING_CLUSTER;
+            }
+        } else {
+            $mutation_type = ($snapshot_probs->[0] > 0)? $ORIGINATING_CLUSTER: $STRUCTURAL_MUTATION;
+        }
+    
+    # Identify response-time mutations
+    my $hypothesis_test_results = $this_cluster_info_hash_ref->{RESPONSE_TIME_STATS};
+    if ($hypothesis_test_results->{REJECT_NULL} == 1) {
+        $mutation_type = $mutation_type | $RESPONSE_TIME_CHANGE;
+    }
+};
+
+
+##
+# Identifies candidate originating clusters of structural mutations.  Candiate
+# originating clusters might be limited to only actual originating clusters, or
+# to all clusters that contain requests from the non-problem period
+#
+# @param cluster_info_hash_ref: A reference to a hash containing statistics
+# about each cluster
+#
+# @return: The $cluster_info_hash_ref->{CANDIDATE_ORIGINATING_CLUSTERS} 
+# points to an array reference of cluster IDs
+##
+my $_identify_originators = sub {
+    
+    assert(scalar(@_) == 2);
+    my ($self, $cluster_id) = @_;
+};
+
+    
 ##
 # Computes statistics on each cluster and stores them in 
 # $self->{CLUSTER_INFO_HASH}.  Specifically, 
@@ -560,28 +642,27 @@ my $_compute_cluster_info = sub {
         my $snapshot_frequencies = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
 
         my @snapshot_probabilities;
-
         $snapshot_probabilities[0] = 
             ($total_requests->[0] > 0) ? $snapshot_frequencies->[0]/$total_requests->[0]: 0;
         $snapshot_probabilities[1] = 
             ($total_requests->[1] > 0) ? $snapshot_frequencies->[1]/$total_requests->[1]: 0;
 
+        # Compute response time statistics
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
-        
-        $self->$_print_boxplots($key, 
-                                $response_times->{S0_RESPONSE_TIMES}, 
-                                $response_times->{S1_RESPONSE_TIMES});
-
         my $response_time_stats = 
             $self->$_compute_response_time_statistics($response_times->{S0_RESPONSE_TIMES},
                                                       $response_times->{S1_RESPONSE_TIMES},
                                                       $key);
-
+        # Print boxplots of reponse times        
+        $self->$_print_boxplots($key, 
+                                $response_times->{S0_RESPONSE_TIMES}, 
+                                $response_times->{S1_RESPONSE_TIMES});
         undef $response_times;
 
+        # Compute edge latency statistics
         my $edge_latency_stats = $self->$_compute_edge_statistics(\@global_ids, $key);
-        
-        # Fill in the %this_cluster_info_hash and add it to the the %cluster_info_hash
+
+        # Fill in the %this_cluster_info_hash
         my %this_cluster_info;
         
         $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
@@ -589,9 +670,19 @@ my $_compute_cluster_info = sub {
         
         $this_cluster_info{RESPONSE_TIME_STATS} = $response_time_stats;
         $this_cluster_info{EDGE_LATENCY_STATS} = $edge_latency_stats;
-    
+
         $this_cluster_info{ID} = $key;
+    
+        # Determine if this cluster is a mutation
+        my %mutation_info;
+        $mutation_info{MUTATION_TYPE} = $self->$_identify_mutation_type(\%this_cluster_info);
+        $mutation_info{CANDIDATE_ORIGINATORS} = undef;
+        if (($mutation_info{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
+            $mutation_info{CANDIDATE_ORIGINATORS} = $self->$_identify_originators($key);
+        }
+        $this_cluster_info{MUTATION_INFO} = \%mutation_info;
         
+
         $cluster_info_hash{$key} = \%this_cluster_info;
     }
      
