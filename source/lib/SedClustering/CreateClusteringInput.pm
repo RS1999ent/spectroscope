@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.8 2009/07/23 01:15:58 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.9 2009/07/28 20:22:51 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -31,6 +31,10 @@
 #  row is the number of times the corresponding unique request
 #  structure was seen in the two datasets.
 #
+# input_vector_distance_matrix.dat: This file contains a matrix 
+#  (in matlab sparse matrix format) of distances between the various
+#  elements of the distance vector.  It is 1-indexed.
+#
 #  input_vec_to_glabal_ids: A mapping of each unique request structure
 #  contained in the input_vector to the global IDs of
 #  the requests that display this structure.  The global ID is unique
@@ -39,6 +43,10 @@
 #  alphabet_mapping_file: This file contains a listing of the original
 #  node names and the encoding (character) to which it corresponds in
 #  the input_vector.
+#
+#  input_vector_distance_matrix.dat: This file contains a matrix 
+#  specifying the distance between different input vectors.  It is
+#  1-indexed.  The file is in MATLAB sparse matrix format.
 ##
 
 package CreateClusteringInput;
@@ -46,6 +54,8 @@ package CreateClusteringInput;
 use strict;
 use Test::Harness::Assert;
 
+use lib '../lib';
+use SedClustering::Sed;
 
 # Global variables ########################################
 
@@ -320,9 +330,15 @@ my $_handle_requests = sub {
 # Computes the distance between the unique string
 # representation of requests.
 my $_compute_distance_matrix = sub {
-    my $self = shift;
-    
-    ##### ADDDDDDDD!!!!
+
+    assert(scalar(@_) == 2);
+    my ($self) = @_;
+
+    my $sed_obj = new Sed($self->{INPUT_VECTOR_FILE},
+                          $self->{DISTANCE_MATRIX_FILE});
+
+    $sed_obj->calculate_edit_distance();
+    undef $sed_obj;
 };
 
 
@@ -403,7 +419,7 @@ sub new {
     $self->{ALPHABET_COUNTER} = 1;
     
     # Specifies the distance between requests for clustering
-    $self->{DISTANCE_MATRIX_FILE} = "$output_dir/distance_matrix.dat";
+    $self->{DISTANCE_MATRIX_FILE} = "$output_dir/input_vector_distance_matrix.dat";
     
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
@@ -422,8 +438,8 @@ sub do_output_files_exist {
 
     if( -e($self->{INPUT_VECTOR_FILE}) &&
         -e($self->{ALPHABET_MAPPING_FILE}) &&
-        -e($self->{INPUT_VEC_TO_GLOBAL_IDS_FILE})) {
-        #&& -e($self->{DISTANCE_MATRIX_FILE})) {
+        -e($self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}) &&
+        -e($self->{DISTANCE_MATRIX_FILE})) {
         return 1;
     }
     return 0;

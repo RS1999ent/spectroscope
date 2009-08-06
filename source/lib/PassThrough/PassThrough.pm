@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PassThrough.pm,v 1.2 2009/04/26 23:48:44 source Exp $
+# $cmuPDL: PassThrough.pm,v 1.3 2009/07/27 20:08:21 rajas Exp $
 ##
 # This perl modules implements a "ClusteringPassThrough"
 # that is, it generates as many clusters as input
@@ -10,6 +10,10 @@
 # The first column represents the offset into the input 
 # vector file of the cluster representative the other other 
 # columns indicate offsets of the datapoints assigned to the cluster.
+#
+# clusters_distance_matrix.dat: This file contains a matrix 
+# specifying the distance between different clusters.  It is 
+# 1-indexed.  This file is in MATLAB sparse matrix format.
 #
 # The code takes as input a data vector, where each row is a datapoint
 # and each column a dimension.  The first two columns of each row
@@ -52,8 +56,12 @@ sub new {
 
     my $self = {};
 
+    # Input files
     $self->{INPUT_VECTOR_FILE} = "$input_dir/input_vector.dat";
-    $self->{DISTANCE_MATRIX_FILE} = "$input_dir/distance_matrix.dat";
+    $self->{INPUT_DISTANCE_MATRIX_FILE} = "$input_dir/input_vector_distance_matrix.dat";
+
+    # Output files
+    $self->{CLUSTER_DISTANCE_MATRIX_FILE} = "$input_dir/clusters_distance_matrix.dat";
     $self->{CLUSTER_FILE} = "$output_dir/clusters.dat";
 
     bless($self, $class);
@@ -70,7 +78,8 @@ sub new {
 sub do_output_files_exist {
     my $self = shift;
 
-    if ( -e($self->{CLUSTER_FILE})) {
+    if ( -e($self->{CLUSTER_FILE}) &&
+         -e($self->{CLUSTER_DISTANCE_MATRIX_FILE})) {
         return 1;
     }
 
@@ -97,6 +106,10 @@ sub cluster {
         print $output_fh "$offset\n";
         $offset++;
     }
+
+    system("cp $self->{INPUT_DISTANCE_MATRIX_FILE} " .
+           "$self->{CLUSTER_DISTANCE_MATRIX_FILE}") == 0
+           or die "Could not create $self->{CLUSTER_DISTANCE_MATRIX_FILE}";
 
     close($input_vector_fh);
     close($output_fh);

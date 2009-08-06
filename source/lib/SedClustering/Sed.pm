@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CalculateSed.pm,v $
+# $cmuPDL: Sed.pm,v 1.1 2009/08/04 07:23:36 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -17,7 +17,7 @@ package Sed;
 use strict;
 use Test::Harness::Assert;
 use List::Util qw(max min);
-
+use Data::Dumper;
 
 # Global variables ###############################
 
@@ -34,18 +34,27 @@ my $_load_input_file = sub {
 
     assert(scalar(@_) == 1);
     my ($self) = @_;
+    
+    my @input_array;
 
-    my %input_array;
+    open (my $input_fh, "<$self->{INPUT_FILE}") or 
+        die "Sed.pm: _load_input_file(): Could not load $self->{INPUT_FILE}.  $!\n";
 
-    open (my $input_fh, "<$self->{INPUT_FILE}");
     my $i = 0;
     while (<$input_fh>) {
-        $i++;
         chomp;
-        my $input_array[$i] = $_;
-    }
 
+        if(/(\d+) (\d+) ([\d\s]+)/) {
+
+            $input_array[$i] = $3;
+            $i++;
+        } else {
+            print("Sed.pm: _load_input_file(): Input format not correct\n");
+            assert(0);
+        }
+    }
     $self->{INPUT_ARRAY} = \@input_array;
+
     close($input_fh);
 };
 
@@ -59,55 +68,54 @@ my $_load_input_file = sub {
 # @return: The normalized edit distance between the two items
 ##
 my $_calculate_edit_distance_inner_loop = sub {
-
+    
     assert(scalar(@_) == 3);
     my($self, $item1_array_ref, $item2_array_ref) = @_;
-
+    
     my $item1_size = scalar(@{$item1_array_ref});
     my $item2_size = scalar(@{$item2_array_ref});
 
     return 1 if ($item1_size == 0);
+    
     return 1 if ($item2_size == 0);
-
+    
     my %mat;
-
+    
     # Initialize the distance matrix
     for (my $i = 0; $i <= $item1_size; $i++) {        
         $mat{$i}{0} = $i;
-
-        for (my $j = 0; $j <= $item2_size; $j++) {
-            $mat{$i}{$j} = 0;
-            $mat{0}{$j} = $j;
-        }
+    }
+    for (my $j = 0; $j <= $item2_size; $j++) {
+        $mat{0}{$j} = $j;
     }
 
+    
     for (my $i = 1; $i <= $item1_size; $i++) {
         for (my $j = 1; $j <= $item2_size; $j++) {
-
-            my $cost = ($item1[$i-1] eq $item2[$j-1]) ? 0: 1;
+            
+            my $cost = ($item1_array_ref->[$i-1] eq $item2_array_ref->[$j-1]) ? 0: 1;
             
             # cell $mat{i}{$j} is the minimum of: 
-            #
             # - The cell immediately above plus 1
             # - The cell immediately to the left plus 1
             # - The cell diagonally above and to the left plus the cost
             #
             # Can either insert a new character, delete a character, or
             # substitute an existing character (with associated cost)
-            $mat{$i}{$j} = min([$mat{$i-1}{$j} +1,
+            $mat{$i}{$j} = min($mat{$i-1}{$j} +1,
                                 $mat{$i}{$j-1} + 1,
-                                $mat{$i-1}{$j-1} + $cost]);
+                                $mat{$i-1}{$j-1} + $cost);
         }
     }
-
+    
     # Finally, the string-edit distance is the rightmost bottom cell of the matrix
     # Normalize the edit distance by dividing by the larger string
-    my $distance = $mat{$item1_size}{$item2_size}./max($item1_size, $item2_size);
-
+    my $distance = $mat{$item1_size}{$item2_size}/max($item1_size, $item2_size);
+    
     return $distance;
 };
 
-                                       
+
 ##
 # Wrapper function for calculating edit-distance between
 # the strings stored in $self->{INPUT_ARRAY}.  Distance between
@@ -118,26 +126,32 @@ my $_calculate_edit_distance_inner_loop = sub {
 my $_calculate_edit_distance_internal = sub {
     assert(scalar(@_) == 1);
     my ($self) = @_;
-
+    
     assert(defined $self->{INPUT_ARRAY});
     my $input_array_ref = $self->{INPUT_ARRAY};
-    
+
     my %distance_hash;
-    
+
     for (my $i = 0; $i < scalar(@{$input_array_ref}); $i++) {        
-        $item1 = split(/ /, $input_array_ref->[$i]);
 
-        for (my $j = $i+1; $j < scalar(@{$input_array_ref}); j++) {
-            $item2 = split(/ /, $input_array_ref->[$j]);
+        my @item1 = split(' ', $input_array_ref->[$i]);
+        for (my $j = $i; $j < scalar(@{$input_array_ref}); $j++) {
 
-            my $distance = $self->$_calculate_edit_dist_inner_loop($item1, $item2);
+            if($j == $i) {
+                $distance_hash{$i+1}{$j+1} = 0;
+                next;
+            }
+            
+            my @item2 = split(' ', $input_array_ref->[$j]);
+
+            my $distance = $self->$_calculate_edit_distance_inner_loop(\@item1, \@item2);
             # Distance array is 1-indexed.
             $distance_hash{$i+1}{$j+1} = $distance;
         }
     }
-
+    
     $self->{DISTANCE_HASH} = \%distance_hash;
-};    
+};
 
 
 ##
@@ -149,16 +163,20 @@ my $_calculate_edit_distance_internal = sub {
 my $_print_edit_distance = sub {
     assert(scalar(@_) == 1);
     my ($self) = @_;
-
+    
     assert(defined $self->{DISTANCE_HASH});
     my $distance_hash_ref = $self->{DISTANCE_HASH};
 
-    for (my $i keys % %{$distance_hash_ref}) {
-        %distance_hash_row = $distance_hash_ref->{$i};
-        for (my $j keys % %distance_hash_row) {
-            print "($i, $j) $distance_hash_row{$j}\n";
+    open(my $distance_fh, ">$self->{DISTANCE_FILE}");
+    
+    foreach my $i (sort {$a <=> $b} keys %{$distance_hash_ref}) {
+        my $distance_hash_row = $distance_hash_ref->{$i};
+        foreach my $j (sort {$a <=> $b} keys %{$distance_hash_row}) {
+            print $distance_fh "$i $j $distance_hash_row->{$j}\n";
         }
     }
+
+    close($distance_fh);
 };
 
 
@@ -171,27 +189,31 @@ my $_print_edit_distance = sub {
 my $_load_distance_file = sub {
     assert(scalar(@_) == 1);
     my ($self) = @_;
-
+    
     open(my $distance_fh, "<$self->{DISTANCE_FILE}") or 
         die("Sed.pm: Could not open file containing the distance matrix\n");
     
     my %distance_hash;
-
-    while (<$distance_fh) {
-        if(/\((\d+),(\d+)\) ([0-9\.]+)/) {
+    
+    while (<$distance_fh>) {
+        if(/(\d+) (\d+) ([0-9\.]+)/) {
             my $i = $1;
             my $j = $2;
             my $distance = $3;
             $distance_hash{$i}{$j} = $distance;
+        } else {
+            print "Sed.pm: _load_distance_file(): $self->{DISTANCE_FILE} " .
+                "Has the wrong format\n";
         }
     }
-
+    $self->{DISTANCE_HASH} = \%distance_hash;
+        
     close($distance_fh);
 };
     
-        
+    
 ################# Public static functions ###############################
-
+    
 ##
 # Creates an object for calculating the edit distance between the strings
 # specified in the input file.
@@ -202,8 +224,8 @@ my $_load_distance_file = sub {
 # file.  This file is formated in matlab sparse matrix format.
 ##
 sub new {
+    assert(scalar(@_) == 3);    
 
-    assert(scalar(@_) == 3);
     my ($proto, $input_file, $distance_file) = @_;
 
     my $class = ref($proto) || $proto;
@@ -213,8 +235,8 @@ sub new {
     $self->{INPUT_FILE} = $input_file;    
     $self->{DISTANCE_FILE} = $distance_file;
 
-    my $self->{DISTANCE_HASH} = undef;
-    my $self->{INPUT_ARRAY} = undef;
+    $self->{DISTANCE_HASH} = undef;
+    $self->{INPUT_ARRAY} = undef;
     
     bless($self, $class);
     return $self;
@@ -258,6 +280,7 @@ sub calculate_edit_distance {
     $self->$_load_input_file();
     $self->$_calculate_edit_distance_internal();
     $self->$_print_edit_distance();
+
 }
 
 
@@ -282,14 +305,15 @@ sub get_sed {
     my ($self, $s1_index, $s2_index) = @_;
 
    # assert that s1_index and s2_index are 1-indexed
-   assert($s1_index > 0 && $s_index > 0);
+   assert($s1_index > 0 && $s2_index > 0);
 
     if(!defined $self->{DISTANCE_HASH}) {
-        $self->_$load_distance_file();
+        $self->$_load_distance_file();
     }
 
     my $retval = (defined $self->{DISTANCE_HASH}->{$s1_index}{$s2_index})?
-        $self->{DISTANCE_HASH}->{$s1_index}{$s2_index};
+        $self->{DISTANCE_HASH}->{$s1_index}{$s2_index}: 
+        $self->{DISTANCE_HASH}->{$s2_index}{$s1_index};
 
     assert(defined $retval);
 
