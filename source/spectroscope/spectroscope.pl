@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.6 2009/07/23 01:15:58 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.7 2009/07/27 20:08:21 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -56,8 +56,9 @@ my $g_reconvert_reqs = 0;
 # structure
 my $g_pass_through = 0;
 
-# Specify the ranking of clusters for printing output
-my $g_cluster_output_ranking;
+# Whether or not structural mutations should be copied to all clusters
+# or just hte originators
+my $g_originators;
 
 # The module for converting requests into MATLAB compatible format
 # for use in the clustering algorithm
@@ -154,7 +155,7 @@ my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_outp
                                                             $g_output_dir);
 
 print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_ranked_clusters($g_cluster_output_ranking);
+$g_parse_clustering_results->print_ranked_clusters($g_originators);
    
 
 ### Helper functions #######
@@ -163,20 +164,20 @@ $g_parse_clustering_results->print_ranked_clusters($g_cluster_output_ranking);
 #
 sub parse_options {
 
-	GetOptions("output_dir=s"   => \$g_output_dir,
-			   "snapshot0=s{1,10}"    => \@g_snapshot0_files,
-			   "snapshot1:s{1,10}"    => \@g_snapshot1_files,
-			   "min_k=i"        => \$g_clustering_params{MIN_K},
-			   "max_k=i"        => \$g_clustering_params{MAX_K},
-			   "k_interval=i",  => \$g_clustering_params{K_INTERVAL},
-			   "best_only+"     => \$g_clustering_params{BEST_ONLY},
-			   "pass_through+"  => \$g_pass_through,
-               "ranking=s"      => \$g_cluster_output_ranking,
-			   "reconvert_reqs+" => \$g_reconvert_reqs);
+	GetOptions("output_dir=s"      => \$g_output_dir,
+			   "snapshot0=s{1,10}" => \@g_snapshot0_files,
+			   "snapshot1:s{1,10}" => \@g_snapshot1_files,
+			   "min_k=i"           => \$g_clustering_params{MIN_K},
+			   "max_k=i"           => \$g_clustering_params{MAX_K},
+			   "k_interval=i",     => \$g_clustering_params{K_INTERVAL},
+			   "best_only+"        => \$g_clustering_params{BEST_ONLY},
+			   "pass_through+"     => \$g_pass_through,
+               "originators=s"     => \$g_originators,,
+			   "reconvert_reqs+"   => \$g_reconvert_reqs);
 
     # These parameters must be specified by the user
     if (!defined $g_output_dir || !defined $g_snapshot0_files[0] ||
-       !defined $g_cluster_output_ranking) {
+       !defined $g_originators) {
         print_usage();
         exit(-1);
     }
@@ -203,7 +204,7 @@ sub print_usage {
 		"\t--max_k, --k_interval, --best_only --pass_through --dont_reconvert_reqs\n"; 
     print "\n";
     print "\t--output_dir: The directory in which output should be placed\n";
-    print "\t--ranking: Must be specified as req_difference\n";
+    print "\t--originators: Either \"all\" or \"originating_only\"\n";
     print "\t--snapshot0: The name(s) of the dot graph output containing requests from\n" .
         "\t the non-problem snapshot(s).  Up to 10 non-problem snapshots can be specified\n";
 	print "\t--snapshot1: The name(s) of the dot graph output containing requests from\n" . 
