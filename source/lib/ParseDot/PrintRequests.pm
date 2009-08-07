@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.14 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.15 2009/08/04 07:23:36 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -723,6 +723,23 @@ sub get_request_edge_latencies_given_global_id {
     my $edge_latency_hash = $self->$_obtain_graph_edge_latencies($graph, \%node_name_hash);
 
     return $edge_latency_hash;
+}
+
+
+##
+# Returns the root node of a request given its global id
+#
+# @param self: The object container
+# @param global_id: The global ID of the request
+##
+sub get_root_node_given_global_id {
+
+    assert(scalar(@_) == 2);
+    my ($self, $global_id) = @_;
+
+    
+    my $req_container = $self->get_req_strucutre_given_global_id($global_id);
+    return $req_container->{ROOT};
 }
 
 

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.15 2009/08/04 07:23:36 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.16 2009/08/05 05:32:23 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -24,6 +24,7 @@ use Statistics::Descriptive;
 use List::Util qw[max sum];
 use diagnostics;
 use Data::Dumper;
+use SedClustering::Sed;
 
 
 #### Global constants #############
@@ -43,7 +44,7 @@ my $ORIGINATING_CLUSTER = 0x010;
 # Denotes a response-time change
 my $RESPONSE_TIME_CHANGE = 0x100;
 
-# Masks out RESPONSE_TIME_MUTATION info
+# Masks out RESPONSE_TIME_CHANGE info
 my $MUTATION_TYPE_MASK = 0x011;
 
 # Masks out the mutation type
@@ -103,11 +104,11 @@ my $_print_boxplots = sub {
         return;
     }
 
-    if (scalar(@$s0_values) >= 4) {
+    if (scalar(@{$s0_values}) >= 4) {
         push(@labels, "s0");
         push(@values, $s0_values);
     }
-    if (scalar(@$s1_values) >= 4) {
+    if (scalar(@{$s1_values}) >= 4) {
         push(@labels, "s1");
         push(@values, $s1_values);
     }
@@ -590,6 +591,7 @@ my $_identify_mutation_type = sub {
 #
 # @param cluster_info_hash_ref: A reference to a hash containing statistics
 # about each cluster
+# @param candidate_originators: Either "all" or "originating_only"
 #
 # @return: The $cluster_info_hash_ref->{CANDIDATE_ORIGINATING_CLUSTERS} 
 # points to an array reference of cluster IDs
@@ -597,9 +599,65 @@ my $_identify_mutation_type = sub {
 my $_identify_originators = sub {
     
     assert(scalar(@_) == 2);
-    my ($self, $cluster_id) = @_;
-};
+    my ($self, $cluster_id, $candidate_originators) = @_;
 
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
+    my $sed_obj = $self->{SED_CLASS};
+
+    foreach my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
+        
+        my $this_cluster = $cluster_info_hash_ref->{$key};
+        my $mutation_info = $this_cluster->{MUTATION_INFO};
+        
+        if (($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
+
+            my %cocd; # "Candidate Originating Cluster Distances"
+        
+            # Get list of candidate originating clusters
+            foreach my $key2 (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
+
+                # Can't be a structural mutation of itself
+                if($key == $key2) {
+                    next;
+                }
+
+                my $that_cluster = $cluster_info_hash_ref->{$key2};
+                my $that_mutation_info = $that_cluster->{MUTATION_INFO};
+
+                # User might has asked that we compare only originating clusters
+                if($candidate_originators == "originating_only" &&
+                   ($that_mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) != $ORIGINATING_CLUSTER) {
+                    next;
+                }
+
+                # Only compare clusters that are of the same high-level type
+                if($that_mutation_info->{ROOT_NODE} ne $that_mutation_info->{ROOT_NODE}) {
+                    next;
+                }
+
+                $cocd{$key2} = $sed_obj->get_sed($key, $key2);
+                assert(defined $cocd{$key2});
+            }
+
+            # Rank the list
+            my $max_originating_clusters = 10;
+            my $idx = 0;
+            my @ranked_originating_clusters;
+            foreach my $candidate_cluster_id (sort {$cocd{$a} <=> $cocd{$b}} keys %cocd) {
+                
+                if($idx >= $max_originating_clusters) {
+                    last;
+                }
+            
+                $ranked_originating_clusters[$idx] = $candidate_cluster_id;
+            }
+
+            # Insert ranked list into information about this cluster
+            $mutation_info->{CANDIDATE_ORIGINATERS} = \@ranked_originating_clusters;
+        }
+    }
+};
+  
     
 ##
 # Computes statistics on each cluster and stores them in 
@@ -664,7 +722,11 @@ my $_compute_cluster_info = sub {
 
         # Fill in the %this_cluster_info_hash
         my %this_cluster_info;
-        
+
+        # Get the root node of the representative for this cluster
+        my $gid = $self->get_global_id_of_cluster_rep($key);
+        $this_cluster_info{ROOT_NODE} = $graph_info->get_root_node_given_global_id($gid);
+
         $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
         $this_cluster_info{SNAPSHOT_PROBS} = \@snapshot_probabilities;
         
@@ -676,10 +738,6 @@ my $_compute_cluster_info = sub {
         # Determine if this cluster is a mutation
         my %mutation_info;
         $mutation_info{MUTATION_TYPE} = $self->$_identify_mutation_type(\%this_cluster_info);
-        $mutation_info{CANDIDATE_ORIGINATORS} = undef;
-        if (($mutation_info{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
-            $mutation_info{CANDIDATE_ORIGINATORS} = $self->$_identify_originators($key);
-        }
         $this_cluster_info{MUTATION_INFO} = \%mutation_info;
         
 
@@ -687,6 +745,8 @@ my $_compute_cluster_info = sub {
     }
      
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
+    $self->$_identify_originators();
+
 };
 
 
@@ -789,16 +849,23 @@ my $_print_graph = sub {
 };
 
 
+                              
 #### Private sort routines #######
 
 ##
-# For each cluster, this function creates a metric:
-#   (num_reqs_from_s1 - num_requests_in_s0)/total_requests_in_cluster
-# and then ranks clusters in descending order.
-#
+# Orders the input clusters based on the metric
+#  (num_reqs_from_s0 - num_reqs_in_s1)/total_requests_in_cluster
+# 
+# Clusters are ordered according to the input metric in descending order
+
 # @param $self: The object container
 # @param $a: The first key
 # @param $b: THe second key
+#
+# @return: 
+#  -1: if metric($a) > metric($b)
+#   0: if metric($a) == metric($b)
+#   1: if (metric($a) < metric($b)
 ##
 my $_sort_clusters_by_frequency_difference = sub {
     assert(scalar(@_) == 3);
@@ -814,16 +881,16 @@ my $_sort_clusters_by_frequency_difference = sub {
     
     my $a_s0_reqs = $a_frequencies->[0];
     my $a_s1_reqs = $a_frequencies->[1];
-    my $a_rank = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
+    my $a_metric = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
     
     my $b_s0_reqs = $b_frequencies->[0];
     my $b_s1_reqs = $b_frequencies->[1];
-    my $b_rank = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
+    my $b_metric = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
     
-    if($b_rank > $a_rank) {
+    if($b_metric > $a_metric) {
         return 1;
     }
-    if($b_rank < $a_rank) {
+    if($b_metric < $a_metric) {
         return -1;
     }
     if($b_s1_reqs > $a_s1_reqs) {
@@ -834,19 +901,111 @@ my $_sort_clusters_by_frequency_difference = sub {
 };
 
 
+##
+# Orders the input clusters based on the problem period response time
+# 
+# @param self: The object container
+# @param $a: The first cluster ID
+# @param $b: The second cluster ID
+#
+# @return: 
+#   -1 if metric($a) > metric($b)
+#    0 if metric($a) == metric($b)
+#    1 if metric($a) < metric($b)
+##
+my $_sort_clusters_by_problem_period_avg_response_time = sub {
+
+    assert(scalar(@_) == 3);
+    my ($self, $a, $b) = @_;
+
+    my $a_response_time_stats= $self->{CLUSTER_INFO_HASH}{$a}{RESPONSE_TIME_STATS};
+    my $b_response_time_stats = $self->{CLUSTER_INFO_HASH}{$b}{RESPONSE_TIME_STATS};
+
+    if($a_response_time_stats->{AVG_LATENCIES} >
+       $b_response_time_stats->{AVG_LATENCIES}) {
+
+        return -1;
+
+    } elsif ($a_response_time_stats->{AVG_LATENCIES} <
+             $b_response_time_stats->{AVG_LATENCIES}) {
+
+        return 1;
+        
+    } 
+
+    return 0;
+};
+
+
+##
+# Sorts clusters in descending order by the metric:
+#     P(cluster|problem-period(s))/p(cluster|non-problem period(s))
+#
+# @param: $a: The first cluster ID
+# @param: $b: The 2nd cluster ID
+#
+# @return: 
+#   -1 if metric($a) > metric($b)
+#    1 if metric($a) < metric($b)
+#    1 if metric($a) == metric($b)
+##
+my $_sort_clusters_by_probability_factor = sub {
+    
+    assert(scalar(@_) == 3);
+    my ($self, $a, $b) = @_;
+
+    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{SNAPSHOT_PROBS};
+    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{SNAPSHOT_PROBS};
+
+    my $a_metric = $a_probs->[1]/$a_probs->[0];
+    my $b_metric = $b_probs->[1]/$b_probs->[0];
+
+    if($a_metric > $b_metric) {
+        return -1;
+    }
+    if ($a_metric < $b_metric) {
+        return 1;
+    }
+    
+    # @bug: Since probability factor is equal, should sort by total frequency
+    return 0;
+};
+
+
 ## 
-# Wrapper function for choosing how clusters
-# will be ranked.  
+# Wrapper function for ordering clusters according to an input metric
 #
 # @param self: The object container
+# @param metric: Can be any of the following: 
+#     req_difference -- The metric used is:
+#              (problem period(s) freqs - non-problem period(s) freq)
+#               ---------------------------------------------
+#             (problem period(s) frequency + non-problem period(s) freq)
+#     prob_response_time -- The metric used is:
+#             (problem period response time)
+#
+# Clusters are ordered according to the input metric in descending order
+#
+# @return:
+#  -1 if metric($a) > metric($b)
+#   0 if metric($a) == metric($b)
+#   1 if metric($a) < metric($b)
+
+#
+# @return: 1 if $self-{CLUSTER_INFO_HASH}->{$b} is ranked higher than 
+# $self->{CLUSTER_INFO_HASH}->{$a}, 0 if equal, or -1 otherwise
 ##
 my $_sort_clusters_wrapper = sub { 
     assert(scalar(@_) == 2);
-    my ($self, $rank_format) = @_;
+    my ($self, $metric) = @_;
 
 
-    if ($rank_format =~ /req_difference/) {
+    if ($metric =~ /req_difference/) {
         $self->$_sort_clusters_by_frequency_difference($a, $b);
+    } elsif($metric =~ /prob_response_time/) {
+        $self->$_sort_clusters_by_problem_period_avg_response_time($a, $b);
+    } elsif($metric =~ /prob_factor/) {
+        $self->$_sort_clusters_by_probability_factor($a, $b);
     } else {
         # Nothing else supported now :(
         assert (0);
@@ -854,6 +1013,74 @@ my $_sort_clusters_wrapper = sub {
 };
 
 
+##
+# Prints all clusters marked as being of type "RESPONSE_TIME_CHANGE"
+#
+# @param self: The object-container
+##
+my $_print_graphs_of_clusters_with_response_time_changes = sub {
+
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    my $output_file = $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE};
+    my $cluster_info = $self->{CLUSTER_INFO_HASH};
+
+    open(my $output_fh, ">$output_file");
+
+    for my $key (sort {$self->$_sort_clusters_wrapper("prob_response_time")} keys %{$cluster_info}) {
+
+        my $this_cluster_info = $cluster_info->{$key};
+        my $mutation_info = $cluster_info->{MUTATION_INFO};
+
+        if (($mutation_info->{MUTATION_TYPE} & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
+            $self->$_print_graph($key, $this_cluster_info, $output_fh);
+        }
+    }
+};
+
+
+##
+# Prints all structural mutations and originating clusters
+#
+# @param self: The object-container
+##
+my $_print_graphs_of_clusters_with_structural_mutations = sub {
+
+    assert(scalar(@_) == 1);
+    my($self) = @_;
+
+    my $mutation_file = $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE};
+    my $originating_file = $self->{ORIGINATING_CLUSTERS_GRAPH_FILE};
+
+    my $cluster_info = $self->{CLUSTER_INFO_HASH};
+    my %originating_printed_hash;
+
+    open(my $mutation_fh, ">$mutation_file");
+    open(my $originating_fh, ">$originating_file");
+
+    for my $key (sort {$self->$_sort_clusters_wrapper("prob_factor")} keys %{$cluster_info}) {
+        
+        my $this_cluster_info = $cluster_info->{$key};
+        my $mutation_info = $cluster_info->{MUTATION_INFO};
+
+        if (($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
+            $self->$_print_graph($key, $this_cluster_info, $mutation_fh);
+            my $candidate_originators = $mutation_info->{CANDIDATE_ORIGINATORS};
+            
+            foreach(@{$candidate_originators}) {
+
+                if(!defined $originating_printed_hash{$_}) {
+                    my $candidate_originator_info = $cluster_info->{$_};
+                    $self->$_print_graph($key, $candidate_originator_info, $originating_fh);
+                    $originating_printed_hash{$_} = 1;
+                }
+            }
+        }
+    }
+};
+        
+        
 #### API functions ################
 
 ##
@@ -898,6 +1125,12 @@ sub new {
     $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$convert_data_dir/input_vec_to_global_ids.dat",;
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
+
+    # @bug: Abstraction violation, this class should not know that
+    # the clusters are the same as the input vector
+    $self->{SED_CLASS} = new Sed("$convert_data_dir/input_vector.dat", 
+                                 "$convert_data_dir/clusters_distance_matrix.dat");
+    assert($self->{SED_CLASS}->do_output_files_exist() == 1);
     
     # Hashes that will be maintained.  These hashes
     # are loaded from text files.
@@ -913,6 +1146,9 @@ sub new {
     # Some derived outputs
     $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
     $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interim_cluster_data";
+    $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/response_time_changes.dot";
+    $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/structural_mutations.dot";
+    $self->{ORIGINATING_CLUSTERS_GRAPH_FILE} = "$output_dir/originating_clusters.dot";
 
     # Create the interim output directory
     system("mkdir -p $self->{INTERIM_OUTPUT_DIR}") == 0 or 
@@ -956,66 +1192,20 @@ sub clear {
 sub print_ranked_clusters {
     assert(scalar(@_) == 2);
     
-    my ($self, $rank_format) = @_;
+    my ($self, $candidate_originators) = @_;
 
-    assert ($rank_format =~ m/req_difference/);
-    # Will add in the following later.
-    #        $rank_format eq "avg_latency_difference" ||
-    #        $rank_foramt eq "total_latency_difference");
+    assert ($candidate_originators =~ m/all/ ||
+            $candidate_originators =~ m/originating_only/);
     
     if($self->{INPUT_HASHES_LOADED} == 0) {
         $self->$_load_files_into_hashes();
     }
-    
     if(!defined $self->{CLUSTER_INFO_HASH}) {
         $self->$_compute_cluster_info();
     }
-    
-    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
-    
-    # First print the text file
-    open(my $ranked_clusters_fh, 
-         ">$self->{OUTPUT_DIR}/ranked_clusters_by_$rank_format.dat")
-        or die ("Could not open ranked clusters file: $!\n");
-    open(my $ranked_clusters_graph_fh,
-         ">$self->{OUTPUT_DIR}/ranked_graphs_by_$rank_format.dot")
-        or die("Could not open ranked clusters file\n");
-    
-    # Print header to ranked_cluster_fh
-    printf $ranked_clusters_fh "%-15s %-15s %-15s %-15s %-15s %-15s %-15s %-15s\n",
-    "rank", "cluster_id", "s0_freq", "s1_freq", "s0_avg_lat", "s0_stddev", "s1_avg_lat", "s1_stddev";
-    
-    # Print information about each cluster ranked appropriately
-    my $rank = 1;
-    for my $key (sort {$self->$_sort_clusters_wrapper($rank_format)} keys %{$cluster_info_hash}) {
-        
-        my $this_cluster_info_hash = $cluster_info_hash->{$key};
-        
-        my $freqs = $this_cluster_info_hash->{FREQUENCIES};
-        my $avg_response_times = $this_cluster_info_hash->{RESPONSE_TIME_STATS}->{AVG_LATENCIES};
 
-        my $stddevs = $this_cluster_info_hash->{RESPONSE_TIME_STATS}->{STDDEVS};
-        
-        # Write rank cluster_id s0_frequency s1_frequency s0_avg_lat s0_stddev s1_avg_lat s1_stddev
-        printf $ranked_clusters_fh "%-15d %-15d %-15d %-15d %-12.3f %-12.3f %-12.3f %-12.3f\n",
-        $rank, $key, $freqs->[0], $freqs->[1], $avg_response_times->[0], $stddevs->[0],
-        $avg_response_times->[1], $stddevs->[1];
-
-        $self->$_print_graph($key, $this_cluster_info_hash, $ranked_clusters_graph_fh);
-
-        $rank++;
-    }
-    close ($ranked_clusters_fh);
-    close($ranked_clusters_graph_fh);
-    
-    # Now print the graph representation in ascending Cluster ID order
-
-        
-    for my $key (sort {$a <=> $b} keys %$cluster_info_hash) {
-        my $this_cluster_info_hash = $cluster_info_hash->{$key};
-    }
-    close($ranked_clusters_graph_fh);
-    
+    $self->$_print_graphs_of_clusters_with_response_time_changes();
+    $self->$_print_graphs_of_clusters_with_structural_mutations();
 }
 
 
