@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.15 2009/08/04 07:23:36 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.16 2009/08/07 17:51:15 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -727,7 +727,7 @@ sub get_request_edge_latencies_given_global_id {
 
 
 ##
-# Returns the root node of a request given its global id
+# Returns the name of the root node of a request given its global id
 #
 # @param self: The object container
 # @param global_id: The global ID of the request
@@ -738,8 +738,9 @@ sub get_root_node_given_global_id {
     my ($self, $global_id) = @_;
 
     
-    my $req_container = $self->get_req_strucutre_given_global_id($global_id);
-    return $req_container->{ROOT};
+    my $req_container = $self->get_req_structure_given_global_id($global_id);
+    my $root_node_name = $req_container->{ROOT}->{NAME};
+    return $root_node_name;
 }
 
 
@@ -752,14 +753,15 @@ sub get_root_node_given_global_id {
 #
 # @return: A pointer to a hash that contains the root node and a pointer to a hash 
 # containing the graph structure.  Specifically,
-#    container = { ROOT_NODE,
+#    container = { ROOT,
 #                  NODE_LIST
 #
 # Node list contains a pointer to a hash, where each element is a node keyed by its ID.
 # Specifically: 
 # 
-#   node id => {NODE_NAME => string,
-#               CHILDREN => \@array containing NODE IDs of children}
+#   node id => {NAME => string,
+#               CHILDREN => \@array containing NODE IDs of children,
+#               ID => node_id}
 ##               
 sub get_req_structure_given_global_id {
 

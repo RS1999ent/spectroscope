@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.9 2009/07/28 20:22:51 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.10 2009/08/06 17:33:20 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -331,7 +331,7 @@ my $_handle_requests = sub {
 # representation of requests.
 my $_compute_distance_matrix = sub {
 
-    assert(scalar(@_) == 2);
+    assert(scalar(@_) == 1);
     my ($self) = @_;
 
     my $sed_obj = new Sed($self->{INPUT_VECTOR_FILE},
@@ -459,12 +459,14 @@ sub create_clustering_input {
     if(defined $self->{SNAPSHOT1_FILES_REF}) {
         $self->$_handle_requests($self->{SNAPSHOT1_FILES_REF}, 1);
     }
-
-    $self->$_compute_distance_matrix();
     
     # Print out files representing the converted data
     $self->$_print_string_rep_hash();
     $self->$_print_alphabet_mapping();
+
+    # Calculate the string-edit distance
+    $self->$_compute_distance_matrix();
+
 }		
 
 

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.16 2009/08/05 05:32:23 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.17 2009/08/07 17:51:15 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -559,11 +559,11 @@ my $_get_global_ids_of_reqs_in_cluster = sub {
 ##
 my $_identify_mutation_type = sub {
 
-    assert(scalar(@_) == 1);
+    assert(scalar(@_) == 2);
     my ($self, $this_cluster_info_hash_ref) = @_;
     
-    my $snapshot_probs = $this_cluster_info_hash_ref->{SNAPSHOT_PROBS};
-    my $mutation_type;
+    my $snapshot_probs = $this_cluster_info_hash_ref->{CLUSTER_PROBS};
+    my $mutation_type = $NO_MUTATION;
 
     # Identify structural mutations and originating clusters
     if($snapshot_probs->[0] > 0 && $snapshot_probs->[1] > 0) {
@@ -581,6 +581,9 @@ my $_identify_mutation_type = sub {
     if ($hypothesis_test_results->{REJECT_NULL} == 1) {
         $mutation_type = $mutation_type | $RESPONSE_TIME_CHANGE;
     }
+
+    printf "Mutation_type: %x\n", $mutation_type;
+    return $mutation_type;
 };
 
 
@@ -599,7 +602,7 @@ my $_identify_mutation_type = sub {
 my $_identify_originators = sub {
     
     assert(scalar(@_) == 2);
-    my ($self, $cluster_id, $candidate_originators) = @_;
+    my ($self, $candidate_originators) = @_;
 
     my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
     my $sed_obj = $self->{SED_CLASS};
@@ -611,13 +614,16 @@ my $_identify_originators = sub {
         
         if (($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
 
+            print "$key is a structural mutation\n";
+
             my %cocd; # "Candidate Originating Cluster Distances"
         
             # Get list of candidate originating clusters
             foreach my $key2 (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
-
+                print "$key: Checking if $key2 is a originating cluster\n";
                 # Can't be a structural mutation of itself
                 if($key == $key2) {
+                    print "$key: $key2 cannot be an originating cluster\n";
                     next;
                 }
 
@@ -625,16 +631,19 @@ my $_identify_originators = sub {
                 my $that_mutation_info = $that_cluster->{MUTATION_INFO};
 
                 # User might has asked that we compare only originating clusters
-                if($candidate_originators == "originating_only" &&
+                if($candidate_originators eq "originating_only" &&
                    ($that_mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) != $ORIGINATING_CLUSTER) {
+                    print "$key: $key2 cannot be a candidate originating cluster; asked for originating only\n";
                     next;
                 }
 
                 # Only compare clusters that are of the same high-level type
-                if($that_mutation_info->{ROOT_NODE} ne $that_mutation_info->{ROOT_NODE}) {
+                if($this_cluster->{ROOT_NODE} ne $that_cluster->{ROOT_NODE}) {
+                    print "$key: $key2 cannot be an originating cluster.  Root nodes don't match\n";
                     next;
                 }
 
+                print "$key: found candidate originating cluster: $key2\n";
                 $cocd{$key2} = $sed_obj->get_sed($key, $key2);
                 assert(defined $cocd{$key2});
             }
@@ -648,17 +657,38 @@ my $_identify_originators = sub {
                 if($idx >= $max_originating_clusters) {
                     last;
                 }
-            
-                $ranked_originating_clusters[$idx] = $candidate_cluster_id;
+                $ranked_originating_clusters[$idx++] = $candidate_cluster_id;
+                
             }
 
             # Insert ranked list into information about this cluster
-            $mutation_info->{CANDIDATE_ORIGINATERS} = \@ranked_originating_clusters;
+            $mutation_info->{CANDIDATE_ORIGINATORS} = \@ranked_originating_clusters;
         }
     }
 };
-  
+
+
+##
+# Computes the probability of a cluster in a period
+#
+# @param $part: Num requests belonging to the 
+#  input cluster from the requisite period(s)
+# @param $whole: Number of reqs seen in the period(s)
+##
+my $_compute_cluster_prob = sub {
+
+    assert(scalar(@_) == 3);
+    my ($self, $part, $whole) = @_;
     
+    my $prob;
+
+    $part = $part + 1;
+    $whole = $whole + 1;
+
+    return $part/$whole;
+};
+    
+
 ##
 # Computes statistics on each cluster and stores them in 
 # $self->{CLUSTER_INFO_HASH}.  Specifically, 
@@ -681,9 +711,9 @@ my $_identify_originators = sub {
 ##
 my $_compute_cluster_info = sub {
 
-    assert(scalar(@_) == 1);
+    assert(scalar(@_) == 2);
+    my ($self, $candidate_originators) = @_;
 
-    my $self = shift;    
     my $cluster_assignment_hash = $self->{CLUSTER_HASH};
     my $graph_info = $self->{PRINT_GRAPHS_CLASS};
     my %cluster_info_hash;
@@ -697,13 +727,10 @@ my $_compute_cluster_info = sub {
         my @global_ids = @{$self->$_get_global_ids_of_reqs_in_cluster($key)};
 
         # Get frequencies and probability of occurence of this cluster in each snapshot
-        my $snapshot_frequencies = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
-
-        my @snapshot_probabilities;
-        $snapshot_probabilities[0] = 
-            ($total_requests->[0] > 0) ? $snapshot_frequencies->[0]/$total_requests->[0]: 0;
-        $snapshot_probabilities[1] = 
-            ($total_requests->[1] > 0) ? $snapshot_frequencies->[1]/$total_requests->[1]: 0;
+        my $cluster_freqs = $graph_info->get_snapshot_frequencies_given_global_ids(\@global_ids);
+        my @cluster_probs;
+        $cluster_probs[0] = $self->$_compute_cluster_prob($cluster_freqs->[0], $total_requests->[0]);
+        $cluster_probs[1] = $self->$_compute_cluster_prob($cluster_freqs->[1], $total_requests->[1]);
 
         # Compute response time statistics
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
@@ -727,8 +754,8 @@ my $_compute_cluster_info = sub {
         my $gid = $self->get_global_id_of_cluster_rep($key);
         $this_cluster_info{ROOT_NODE} = $graph_info->get_root_node_given_global_id($gid);
 
-        $this_cluster_info{FREQUENCIES} = $snapshot_frequencies;
-        $this_cluster_info{SNAPSHOT_PROBS} = \@snapshot_probabilities;
+        $this_cluster_info{FREQUENCIES} = $cluster_freqs;
+        $this_cluster_info{CLUSTER_PROBS} = \@cluster_probs;
         
         $this_cluster_info{RESPONSE_TIME_STATS} = $response_time_stats;
         $this_cluster_info{EDGE_LATENCY_STATS} = $edge_latency_stats;
@@ -745,7 +772,7 @@ my $_compute_cluster_info = sub {
     }
      
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
-    $self->$_identify_originators();
+    $self->$_identify_originators($candidate_originators);
 
 };
 
@@ -954,8 +981,8 @@ my $_sort_clusters_by_probability_factor = sub {
     assert(scalar(@_) == 3);
     my ($self, $a, $b) = @_;
 
-    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{SNAPSHOT_PROBS};
-    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{SNAPSHOT_PROBS};
+    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{CLUSTER_PROBS};
+    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{CLUSTER_PROBS};
 
     my $a_metric = $a_probs->[1]/$a_probs->[0];
     my $b_metric = $b_probs->[1]/$b_probs->[0];
@@ -1031,7 +1058,7 @@ my $_print_graphs_of_clusters_with_response_time_changes = sub {
     for my $key (sort {$self->$_sort_clusters_wrapper("prob_response_time")} keys %{$cluster_info}) {
 
         my $this_cluster_info = $cluster_info->{$key};
-        my $mutation_info = $cluster_info->{MUTATION_INFO};
+        my $mutation_info = $this_cluster_info->{MUTATION_INFO};
 
         if (($mutation_info->{MUTATION_TYPE} & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
             $self->$_print_graph($key, $this_cluster_info, $output_fh);
@@ -1056,23 +1083,27 @@ my $_print_graphs_of_clusters_with_structural_mutations = sub {
     my $cluster_info = $self->{CLUSTER_INFO_HASH};
     my %originating_printed_hash;
 
-    open(my $mutation_fh, ">$mutation_file");
-    open(my $originating_fh, ">$originating_file");
+    open(my $mutation_fh, ">$mutation_file") or 
+        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
+        " $mutation_file.  $!\n";
+    open(my $originating_fh, ">$originating_file") or 
+        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
+        " $originating_file.  $!\n";
 
     for my $key (sort {$self->$_sort_clusters_wrapper("prob_factor")} keys %{$cluster_info}) {
         
         my $this_cluster_info = $cluster_info->{$key};
-        my $mutation_info = $cluster_info->{MUTATION_INFO};
+        my $mutation_info = $this_cluster_info->{MUTATION_INFO};
 
         if (($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
             $self->$_print_graph($key, $this_cluster_info, $mutation_fh);
             my $candidate_originators = $mutation_info->{CANDIDATE_ORIGINATORS};
             
             foreach(@{$candidate_originators}) {
-
+                print "Structural Mutation: $key, Candidate Originator: $_\n";
                 if(!defined $originating_printed_hash{$_}) {
                     my $candidate_originator_info = $cluster_info->{$_};
-                    $self->$_print_graph($key, $candidate_originator_info, $originating_fh);
+                    $self->$_print_graph($_, $candidate_originator_info, $originating_fh);
                     $originating_printed_hash{$_} = 1;
                 }
             }
@@ -1201,7 +1232,7 @@ sub print_ranked_clusters {
         $self->$_load_files_into_hashes();
     }
     if(!defined $self->{CLUSTER_INFO_HASH}) {
-        $self->$_compute_cluster_info();
+        $self->$_compute_cluster_info($candidate_originators);
     }
 
     $self->$_print_graphs_of_clusters_with_response_time_changes();
