@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.16 2009/08/07 17:51:15 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.17 2009/08/08 09:35:21 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -184,55 +184,34 @@ my $_obtain_graph_edge_latencies = sub {
 
 
 ##
-# Overlays information about edges specified by the caller onto
-# the input graph
+# Overlays informaton on top of a request-flow graph
 #
 # @param $self: The object container
 # @param $request: A string representation of the request-flow graph
-# @param $edge_info_hash: A pointer to a hash containing information
-# about various edges.  The hash is constructed as follows: 
+# @param $overlay_hash_ref: A pointer to a hash containing the overlay info
+#  This hash should contain: 
+#     { SUMMARY_NODE => string specifying a summary of the graph
+#       EDGE_STATS   => A reference to a hash keyed be edge name and containing
+#                       the following information: 
+#    edge_name = { REJECT_NULL  => <value>,
+#                 P_VALUE       => <value>,
+#                 AVG_LATENCIES => \@array,
+#                 STDDEVS       => \@array}
 #
-# edge_name = { REJECT_NULL => <value>,
-#             P_VALUE => <value>,
-#             AVG_LATENCIES => \@array,
-#             STDDEVS => \@array}
+# The edge name must be constructed as"source_node_name->dest_node_name"
 #
-# The edge name must be "source_node_name->dest_node_name"
-#
-# @return: A string representation of the graph w/the appropriate info
-# overlayed.
+# @return: A string representation of the graph w/the info overlayed
 ##
-my $_overlay_cluster_info = sub {
+my $_overlay_request_info = sub {
     assert(scalar(@_) == 3);
 
-    my $self = shift;
-    my $request = shift;
-    my $cluster_info_hash_ptr = shift;
+    my ($self, $request, $overlay_hash_ref) = @_;
+    
+    my $summary_node = $overlay_hash_ref->{SUMMARY_NODE};
+    my $edge_info_hash = $overlay_hash_ref->{EDGE_STATS};
 
     my %node_name_hash;
     DotHelper::parse_nodes_from_string($request, 1, \%node_name_hash);
-
-    # Construct a "fake node" w/summary information
-    my $summary_node = "1 [fontcolor=\"blue\" shape=\"plaintext\" ";
-    $summary_node = $summary_node . 
-        sprintf("label=\"Cluster ID: %d\\nAvg. response times: %dus / %dus\\n",
-                $cluster_info_hash_ptr->{ID}, 
-                int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{AVG_LATENCIES}->[0] + .5),
-                int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{AVG_LATENCIES}->[1] + .5));
-
-    $summary_node = $summary_node . sprintf("Stddevs: %dus / %dus\\n",
-                                            int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{STDDEVS}->[0] + .5),
-                                            int($cluster_info_hash_ptr->{RESPONSE_TIME_STATS}->{STDDEVS}->[1] + .5));
-
-    my $total_reqs = $cluster_info_hash_ptr->{FREQUENCIES}->[0] + $cluster_info_hash_ptr->{FREQUENCIES}->[1];
-    my $percent_reqs_s0 = $cluster_info_hash_ptr->{FREQUENCIES}->[0]/$total_reqs*100;
-    my $percent_reqs_s1 = $cluster_info_hash_ptr->{FREQUENCIES}->[1]/$total_reqs*100;
-    $summary_node = $summary_node . sprintf("Percent makeup: %d / %d\\n",
-                                            int($percent_reqs_s0 + .5),
-                                            int($percent_reqs_s1 + .5));
-    
-    $summary_node = $summary_node . sprintf("Total requests: %d\"]",
-                                            $total_reqs);
                             
     # Split the graph into lines and insert the summary node after the "Digraph G{"
     my @mod_graph_array = split(/\n/, $request);
@@ -242,8 +221,6 @@ my $_overlay_cluster_info = sub {
     # edge comparisons.  Since the edge_info_hash has unique entries for each edge name,
     # the same aggregate info might be overlayed on edges that occur multiple times
     # in the request.
-    my $edge_info_hash = $cluster_info_hash_ptr->{EDGE_LATENCY_STATS};
-
     for (my $i = 0; $i < scalar(@mod_graph_array); $i++) {
         my $line = $mod_graph_array[$i];
 
@@ -405,6 +382,97 @@ my $_build_graph_structure = sub {
     
     return {ROOT =>$root_ptr, NODE_HASH =>\%graph_structure_hash};
 };
+
+
+#### Static functions ########################################################
+
+##
+# Given key information about a cluster, this function returns a
+# "summary node" in DOT format that contains this information
+#
+# @param response_time_stats_ref: Statistics about the response-time
+#    the hash that this reference points should be: 
+#    { REJECT_NULL => <0 or 1>
+#      P_VALUE => <integer>
+#      AVG_LATENCIES => ref to an array denoting avg. latencies from s0, s1
+#      STDDEVS => ref to an array denoting std. devs from s0, s1
+#    }
+# @param cluster_likelihood_array_ref: Information about the likelihood of this
+#  cluster in S0 and S1
+# @param frequencies: Information about the frequencies of this this cluster
+#  in s0 and s1
+# @param mutation_type: A string indicating the type of the mutation
+# @param originators_array_ref: (OPTIONAL) A reference to an array 
+#  containing cluster IDs of candidate originating clusters. 
+#
+# @return: A string containing the summary node in DOT format
+##
+sub create_summary_node {
+    
+    assert( scalar(@_) == 5 || scalar(@_) == 6);
+
+    my ($cluster_id, $response_time_stats, 
+        $cluster_likelihood_array_ref, $frequencies_array_ref,
+        $mutation_type, $originators_array_ref);
+
+    if (scalar(@_) == 6) {
+        ($cluster_id, $response_time_stats, 
+         $cluster_likelihood_array_ref, $frequencies_array_ref,
+         $mutation_type, $originators_array_ref) = @_;
+    } else {
+        ($cluster_id, $response_time_stats, 
+         $cluster_likelihood_array_ref, $frequencies_array_ref,
+         $mutation_type) = @_;
+    }
+
+    my $summary_node = "1 [fontcolor=\"blue\" shape=\"plaintext\" ";
+
+    # Add cluster ID and mutation type info
+    $summary_node = $summary_node . 
+        sprintf("label=\"Cluster ID: %d\\nMutation Type: %s\n\n",
+                $cluster_id, 
+                $mutation_type);
+
+    # Add originating cluster information
+    if (defined $originators_array_ref) {
+        $summary_node = $summary_node . sprintf("Candidate originating clusters: ");
+        foreach (@{$originators_array_ref}) {
+            $summary_node = $summary_node . "$_ ";
+        }
+        $summary_node = $summary_node . "\n";
+    }
+
+    # Add Response-time information
+    $summary_node = $summary_node . 
+        sprintf("Avg. response times: %d us ; %d us\\n",
+                int($response_time_stats->{AVG_LATENCIES}->[0] + .5),
+                int($response_time_stats->{AVG_LATENCIES}->[1] + .5));
+
+    # Add Standard-deviation information
+    $summary_node = $summary_node .
+        sprintf("Standard Deviations: %d us ; %d us\\n",
+                int($response_time_stats->{STDDEVS}->[0] + .5),
+                int($response_time_stats->{STDDEVS}->[1] + .5));
+
+    # Add probability information
+    $summary_node = $summary_node . 
+        sprintf("Cluster likelihood: %3.4f ; %3.4f\\n",
+                $cluster_likelihood_array_ref->[0], $cluster_likelihood_array_ref->[1]);
+
+    # Add frequency information
+    my $total_reqs = $frequencies_array_ref->[0] + $frequencies_array_ref->[1];
+    my $percent_reqs_s0 = $frequencies_array_ref->[0]/$total_reqs*100;
+    my $percent_reqs_s1 = $frequencies_array_ref->[1]/$total_reqs*100;
+    $summary_node = $summary_node . sprintf("Percent makeup: %d / %d\\n",
+                                            int($percent_reqs_s0 + .5),
+                                            int($percent_reqs_s1 + .5));
+
+    # Add total number of requests in the clsuter
+    $summary_node = $summary_node . sprintf("Total requests: %d\"]",
+                                            $total_reqs);
+
+    return $summary_node;
+}
     
 
 #### API functions ############################################################
@@ -469,19 +537,23 @@ sub new {
 # @param self: The object container
 # @param global_id: The global id of the request to print
 # @param output_fh: The output filehandle
-# @param cluster_info: (OPTIONAL)Information to overlay on request,
-# keyed by edge name ("src_node_name->$dest_node_name"
+# @param overlay_hash_ref: (OPTIONAL) If desired, the caller can overlay 
+#  information on top of the printed request.  A summary node can
+#  be printed containing information about this request, and information
+#  about edge latencies can be overlayed on top of the edges.  If specifed,
+#  this parameter should point to a hash that contains: 
+#    { SUMMARY_NODE => string containing a node in DOT format
+#      EDGE_STATS   => reference to a hash containing information about edges
 ##
 sub print_global_id_indexed_request {
     
     assert(scalar(@_) == 3 || scalar(@_) == 4);
 
-    my $self, my $global_id, my $output_fh;
-    my $cluster_info;
+    my ($self, $global_id, $output_fh, $overlay_hash_ref);
     if (scalar(@_) == 3) {
         ($self, $global_id, $output_fh) = @_;
     } else {
-        ($self, $global_id, $output_fh, $cluster_info) = @_;
+        ($self, $global_id, $output_fh, $overlay_hash_ref) = @_;
     }
 
     my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
@@ -489,8 +561,8 @@ sub print_global_id_indexed_request {
     my $request = $self->$_get_local_id_indexed_request($local_id, $snapshot, $filename_idx);
 
     my $modified_req;
-    if (defined $cluster_info) {
-        $modified_req = $self->$_overlay_cluster_info($request, $cluster_info);
+    if (defined $overlay_hash_ref) {
+        $modified_req = $self->$_overlay_request_info($request, $overlay_hash_ref);
     } else {
         $modified_req = $request;
     }

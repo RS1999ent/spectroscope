@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.17 2009/08/07 17:51:15 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.18 2009/08/08 09:35:20 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -293,7 +293,12 @@ my $_run_hypothesis_test = sub {
 #  to caller-specified names.  If this parameter is not specified, the keys of the hash 
 #  returned will be row numbers.  These row numbers are 1-indexed.
 #
-# @return: The hyp_test_results_hash
+# @return: A reference to the hyp_test_results_hash.  It is formatted as follows: 
+#    { REJECT_NULL => <0 or 1>
+#      P_VALUE => <integer>
+#      AVG_LATENCIES => ref to a two element array denoting avg. latencies from s0,s1
+#      STDDEVS => ref to a two selement array denoting std. devs fro s0, s1
+#    }
 ##                             
 my $_load_hypothesis_test_results = sub {    
 
@@ -546,8 +551,7 @@ my $_get_global_ids_of_reqs_in_cluster = sub {
 
 
 ##
-# Identifies the type of mutation of a cluster.  Inserts this information
-# into $self->{CLUSTER_INFO_HASH}->{MUTATION_INFO}.
+# Identifies the type of mutation of a cluster.
 # 
 # @param self: The object container
 # @param this_cluster_info_hash_ref: A reference to hash containing statistics
@@ -562,7 +566,7 @@ my $_identify_mutation_type = sub {
     assert(scalar(@_) == 2);
     my ($self, $this_cluster_info_hash_ref) = @_;
     
-    my $snapshot_probs = $this_cluster_info_hash_ref->{CLUSTER_PROBS};
+    my $snapshot_probs = $this_cluster_info_hash_ref->{LIKELIHOODS};
     my $mutation_type = $NO_MUTATION;
 
     # Identify structural mutations and originating clusters
@@ -755,7 +759,7 @@ my $_compute_cluster_info = sub {
         $this_cluster_info{ROOT_NODE} = $graph_info->get_root_node_given_global_id($gid);
 
         $this_cluster_info{FREQUENCIES} = $cluster_freqs;
-        $this_cluster_info{CLUSTER_PROBS} = \@cluster_probs;
+        $this_cluster_info{LIKELIHOODS} = \@cluster_probs;
         
         $this_cluster_info{RESPONSE_TIME_STATS} = $response_time_stats;
         $this_cluster_info{EDGE_LATENCY_STATS} = $edge_latency_stats;
@@ -869,12 +873,24 @@ my $_print_graph = sub {
     my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
 
     # Print the graph
+    my $mutation_type_string = $self->get_mutation_type($cluster_id);
+
+    # Create the summary node
+    my $summary_node = 
+        PrintRequests::create_summary_node($cluster_info->{ID},
+                                           $cluster_info->{RESPONSE_TIME_STATS},
+                                           $cluster_info->{LIKELIHOODS},
+                                           $cluster_info->{FREQUENCIES},
+                                           $mutation_type_string,
+                                           $cluster_info->{MUTATION_INFO}{CANDIDATE_ORIGINATORS});
+
+    # Print the graph w/overlay info
+    my %overlay_hash = (SUMMARY_NODE => $summary_node,
+                        EDGE_STATS => $cluster_info->{EDGE_LATENCY_STATS});
     $print_graphs_class->print_global_id_indexed_request($global_ids[0], 
                                                          $out_fh,
-                                                         $cluster_info);
-
+                                                         \%overlay_hash);
 };
-
 
                               
 #### Private sort routines #######
@@ -948,13 +964,13 @@ my $_sort_clusters_by_problem_period_avg_response_time = sub {
     my $a_response_time_stats= $self->{CLUSTER_INFO_HASH}{$a}{RESPONSE_TIME_STATS};
     my $b_response_time_stats = $self->{CLUSTER_INFO_HASH}{$b}{RESPONSE_TIME_STATS};
 
-    if($a_response_time_stats->{AVG_LATENCIES} >
-       $b_response_time_stats->{AVG_LATENCIES}) {
+    if($a_response_time_stats->{AVG_LATENCIES}->[1] >
+       $b_response_time_stats->{AVG_LATENCIES}->[1]) {
 
         return -1;
 
-    } elsif ($a_response_time_stats->{AVG_LATENCIES} <
-             $b_response_time_stats->{AVG_LATENCIES}) {
+    } elsif ($a_response_time_stats->{AVG_LATENCIES}->[1] <
+             $b_response_time_stats->{AVG_LATENCIES}->[1]) {
 
         return 1;
         
@@ -981,8 +997,8 @@ my $_sort_clusters_by_probability_factor = sub {
     assert(scalar(@_) == 3);
     my ($self, $a, $b) = @_;
 
-    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{CLUSTER_PROBS};
-    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{CLUSTER_PROBS};
+    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{LIKELIHOODS};
+    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{LIKELIHOODS};
 
     my $a_metric = $a_probs->[1]/$a_probs->[0];
     my $b_metric = $b_probs->[1]/$b_probs->[0];
@@ -1110,7 +1126,58 @@ my $_print_graphs_of_clusters_with_structural_mutations = sub {
         }
     }
 };
-        
+
+
+##
+# Prints a text-file containing statistics about all clustrs
+##
+my $_print_all_clusters = sub {
+
+    assert( scalar(@_) == 1);
+    my ($self) = @_;
+
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
+    my $graph_info = $self->{PRINT_GRAPHS_CLASS};
+
+    open (my $out_fh, ">$self->{CLUSTER_INFO_TEXT_FILE}") or 
+        die "ParseClusterResults: _print_all_clusters(): could not open " .
+        "$self->{CLUSTER_INFO_TEXT_FILE}.  $!\n";
+
+    # Aggregate statistics
+    my $likelihood_diff = 0;
+
+    # Print the header to the output
+    printf $out_fh "%-15s\t%-40s\t%-20s\t%-20s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\n",
+    "cluster_id", "mutation_type", "s0_likelh", "s1_likelh", "s0_avg_lat", 
+    "s1_avg_lat", "s0_stddev", "s1_stddev", "s0_freq", "s1_freq";
+
+    for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
+
+        my $this_cluster_hash_ref = $cluster_info_hash_ref->{$key};
+
+        my $likelihoods = $this_cluster_hash_ref->{LIKELIHOODS};
+        my $mutation_type_string  = $self->get_mutation_type($key);        
+        my $response_time_stats = $this_cluster_hash_ref->{RESPONSE_TIME_STATS};
+        my $freqs = $this_cluster_hash_ref->{FREQUENCIES};
+
+        printf $out_fh "%-15d\t%-40s\t%-1.14f\t%-1.14f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\n",
+        $key, $mutation_type_string, $likelihoods->[0], $likelihoods->[1], 
+        $response_time_stats->{AVG_LATENCIES}->[0], $response_time_stats->{AVG_LATENCIES}->[1],
+        $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[0],
+        $freqs->[0], $freqs->[1];
+
+        # Collect some aggregate statistics
+        $likelihood_diff += $likelihoods->[1] - $likelihoods->[0];
+    }
+
+    printf $out_fh "\n\nLikelihood diff: %-12.3f\n", $likelihood_diff;
+    my $cluster_freqs = $graph_info->get_snapshot_frequencies();
+    print $out_fh "Total s0 requests: $cluster_freqs->[0]\n";
+    print $out_fh "Total s1 requests: $cluster_freqs->[1]\n";
+
+    close($out_fh);
+};
+    
         
 #### API functions ################
 
@@ -1180,6 +1247,7 @@ sub new {
     $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/response_time_changes.dot";
     $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/structural_mutations.dot";
     $self->{ORIGINATING_CLUSTERS_GRAPH_FILE} = "$output_dir/originating_clusters.dot";
+    $self->{CLUSTER_INFO_TEXT_FILE} = "$output_dir/cluster_info.dat";
 
     # Create the interim output directory
     system("mkdir -p $self->{INTERIM_OUTPUT_DIR}") == 0 or 
@@ -1237,6 +1305,7 @@ sub print_ranked_clusters {
 
     $self->$_print_graphs_of_clusters_with_response_time_changes();
     $self->$_print_graphs_of_clusters_with_structural_mutations();
+    $self->$_print_all_clusters();
 }
 
 
@@ -1383,7 +1452,50 @@ sub get_cluster_requests {
 
     return $retval;
 }
+
+##
+# Returns the mutation type of a cluster given its ID
+#
+# @param cluster_id: the cluster ID
+#
+# @return: a string: 
+#   "Structural Mutation"
+#   "Candidate Originating Cluster"
+#   "Structural Mutation and Response Time Change"
+#   "Candidate Originating Cluster" and Response Time Change"
+##
+sub get_mutation_type {
+    assert(scalar(@_) == 2);
     
+    my ($self, $cluster_id) = @_;
+
+    
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
+    my $mutation_type = $cluster_info_hash_ref->{$cluster_id}->{MUTATION_INFO}->{MUTATION_TYPE};
+    my $mutation_type_string;
+
+    if (($mutation_type & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
+        $mutation_type_string = "Structural Mutation";
+    } elsif (($mutation_type & $MUTATION_TYPE_MASK) == $ORIGINATING_CLUSTER) {
+        $mutation_type_string = "Originating Cluster";
+    }
+
+    if (($mutation_type & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
+        if (defined $mutation_type_string) {
+            $mutation_type_string = $mutation_type_string . " and Response Time Change";
+        } else {
+            $mutation_type_string = "Response Time Change";
+        }
+    }
+
+    if (!defined $mutation_type_string) {
+        $mutation_type_string = "None";
+    }
+
+    return $mutation_type_string;
+
+}
+
 
 1;    
 
