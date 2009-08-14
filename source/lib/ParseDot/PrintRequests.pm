@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.17 2009/08/08 09:35:21 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.18 2009/08/13 21:28:13 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -429,7 +429,7 @@ sub create_summary_node {
 
     # Add cluster ID and mutation type info
     $summary_node = $summary_node . 
-        sprintf("label=\"Cluster ID: %d\\nMutation Type: %s\n\n",
+        sprintf("label=\"Cluster ID: %d\\nMutation Type: %s\\n",
                 $cluster_id, 
                 $mutation_type);
 
