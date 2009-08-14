@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.18 2009/08/13 21:28:13 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.19 2009/08/14 16:08:55 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -439,7 +439,7 @@ sub create_summary_node {
         foreach (@{$originators_array_ref}) {
             $summary_node = $summary_node . "$_ ";
         }
-        $summary_node = $summary_node . "\n";
+        $summary_node = $summary_node . "\\n";
     }
 
     # Add Response-time information
