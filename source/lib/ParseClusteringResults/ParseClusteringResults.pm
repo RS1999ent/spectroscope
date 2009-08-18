@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.18 2009/08/08 09:35:20 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.19 2009/08/13 21:28:13 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -49,12 +49,6 @@ my $MUTATION_TYPE_MASK = 0x011;
 
 # Masks out the mutation type
 my $RESPONSE_TIME_MASK = 0x100;
-
-# if p(r|problem)/p(r|non-problem) > g_sensitivity
-# then r is a structural mutation
-# if p(r|non-problem)/p(r|problem) > g_sensitivity
-# then r is a originating cluster
-my $g_sensitivity = 2;
 
 
 #### Private functions ############
@@ -568,12 +562,13 @@ my $_identify_mutation_type = sub {
     
     my $snapshot_probs = $this_cluster_info_hash_ref->{LIKELIHOODS};
     my $mutation_type = $NO_MUTATION;
+    my $sensitivity = $self->{INTERESTING_SENSITIVITY};
 
     # Identify structural mutations and originating clusters
     if($snapshot_probs->[0] > 0 && $snapshot_probs->[1] > 0) {
-            if ($snapshot_probs->[1]/$snapshot_probs->[0] > $g_sensitivity) {
+            if ($snapshot_probs->[1]/$snapshot_probs->[0] > $sensitivity) {
                 $mutation_type = $STRUCTURAL_MUTATION;
-            } elsif ($snapshot_probs->[0]/$snapshot_probs->[1] > $g_sensitivity) {
+            } elsif ($snapshot_probs->[0]/$snapshot_probs->[1] > $sensitivity) {
                 $mutation_type = $ORIGINATING_CLUSTER;
             }
         } else {
@@ -1209,11 +1204,11 @@ my $_print_all_clusters = sub {
 ##
 sub new {
 
-    assert(scalar(@_) == 4);
+    assert(scalar(@_) == 5);
 
     my ($proto, $convert_data_dir, 
-        $print_graphs_class, $output_dir) = @_;
-
+        $print_graphs_class, $output_dir, 
+        $interesting_sensitivity) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
@@ -1223,6 +1218,7 @@ sub new {
     $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$convert_data_dir/input_vec_to_global_ids.dat",;
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
+    $self->{INTERESTING_SENSITIVITY} = $interesting_sensitivity;
 
     # @bug: Abstraction violation, this class should not know that
     # the clusters are the same as the input vector
@@ -1254,7 +1250,6 @@ sub new {
         die ("ParseClusteringResults.pm: new: Could not create" .
              " $self->{INTERIM_OUTPUT_DIR}.  $!\n");
     
-
     bless($self, $class);
     
     return $self;

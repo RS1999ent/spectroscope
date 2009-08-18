@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.7 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.8 2009/08/07 18:02:44 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -56,6 +56,12 @@ my $g_reconvert_reqs = 0;
 # structure
 my $g_pass_through = 0;
 
+# If p(cluster|problem)/p(cluster|non-problem) is greater than this value
+# then the cluster is considered a structural mutation.  If it is less than
+# 1/this value value, then it is considered an originating cluster.
+my $g_interesting_sensitivity = 2;
+
+
 # Whether or not structural mutations should be copied to all clusters
 # or just hte originators
 my $g_originators;
@@ -66,6 +72,7 @@ my $g_create_clustering_input;
 
 # The module for parsing requests
 my $g_parse_requests;
+
 
 # The names of the files that must be returned by the convert data script
 #my %converted_req_names => (MATLAB_INPUT_VECTOR => "",
@@ -155,7 +162,8 @@ my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_outp
                                                             $g_output_dir);
 
 print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_ranked_clusters($g_originators);
+$g_parse_clustering_results->print_ranked_clusters($g_originators, 
+                                                   $g_interesting_sensitivity);
    
 
 ### Helper functions #######
@@ -164,16 +172,17 @@ $g_parse_clustering_results->print_ranked_clusters($g_originators);
 #
 sub parse_options {
 
-	GetOptions("output_dir=s"      => \$g_output_dir,
-			   "snapshot0=s{1,10}" => \@g_snapshot0_files,
-			   "snapshot1:s{1,10}" => \@g_snapshot1_files,
-			   "min_k=i"           => \$g_clustering_params{MIN_K},
-			   "max_k=i"           => \$g_clustering_params{MAX_K},
-			   "k_interval=i",     => \$g_clustering_params{K_INTERVAL},
-			   "best_only+"        => \$g_clustering_params{BEST_ONLY},
-			   "pass_through+"     => \$g_pass_through,
-               "originators=s"     => \$g_originators,,
-			   "reconvert_reqs+"   => \$g_reconvert_reqs);
+	GetOptions("output_dir=s"              => \$g_output_dir,
+			   "snapshot0=s{1,10}"         => \@g_snapshot0_files,
+			   "snapshot1:s{1,10}"         => \@g_snapshot1_files,
+			   "min_k=i"                   => \$g_clustering_params{MIN_K},
+			   "max_k=i"                   => \$g_clustering_params{MAX_K},
+			   "k_interval=i",             => \$g_clustering_params{K_INTERVAL},
+			   "best_only+"                => \$g_clustering_params{BEST_ONLY},
+			   "pass_through+"             => \$g_pass_through,
+               "originators=s"             => \$g_originators,
+			   "reconvert_reqs+"           => \$g_reconvert_reqs,
+               "interesting_sensitivity:i" => \$g_interesting_sensitivity);
 
     # These parameters must be specified by the user
     if (!defined $g_output_dir || !defined $g_snapshot0_files[0] ||
@@ -218,9 +227,10 @@ sub print_usage {
     print "\t--reconvert_reqs: Re-indexes and reconverts requests for\n" .
           "\t fast access and MATLAB input (OPTIONAL)\n";
 	print "\t--pass_through: Skips the clustering step (OPTIONAL)\n";
-
-
+    print "\t--interesting_sensitivity: Sensitivity threshold for a cluster\n" .
+        "\t being classified a structural mutation, or an originating cluster\n";
 }
+
 
 
 
