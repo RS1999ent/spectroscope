@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.8 2009/08/07 18:02:44 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.9 2009/08/18 04:11:35 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -159,11 +159,12 @@ my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
 
 my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
                                                             $g_print_requests,
-                                                            $g_output_dir);
+                                                            $g_output_dir,
+                                                            $g_interesting_sensitivity);
 
 print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_ranked_clusters($g_originators, 
-                                                   $g_interesting_sensitivity);
+$g_parse_clustering_results->print_ranked_clusters($g_originators);
+
    
 
 ### Helper functions #######
