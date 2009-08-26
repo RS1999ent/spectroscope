@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.3 2009/05/05 10:10:53 source Exp $
+# $cmuPDL: DecisionTree.pm,v 1.4 2009/05/05 17:38:49 source Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -19,6 +19,8 @@ use DBI;
 use Data::Dumper;
 
 use ExplainClusters::MatchGraphs qw[match_graphs];
+use ParseDot::StructuredGraph qw[get_req_structure];
+
 
 #### Global constants ####################
 
@@ -213,7 +215,8 @@ my $_build_and_print_data_table = sub {
 
     while (-1 != (my $global_id = $cluster_info_obj->get_cluster_requests($cluster_id, \$cookie))) {
 
-        my $req_container = $request_info_obj->get_req_structure_given_global_id($global_id);
+        my $req_string = $request_info_obj->get_global_id_indexed_request($global_id);
+        my $req_container = StructuredGraph::get_req_structure($req_string);
         my $snapshot = $request_info_obj->get_snapshots_given_global_ids([$global_id]);
         
         if ($snapshot->[0] == 0) {

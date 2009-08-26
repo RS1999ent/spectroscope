@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.4 2009/04/27 20:14:44 source Exp $
+# $cmuPDL: DotHelper.pm,v 1.5 2009/07/27 20:08:21 rajas Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -118,5 +118,3 @@ sub parse_nodes_from_file {
 
 
 1;
-
-

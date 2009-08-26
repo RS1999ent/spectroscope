@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.19 2009/08/14 16:08:55 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.20 2009/08/14 16:30:42 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -14,7 +14,9 @@ use Test::Harness::Assert;
 use diagnostics;
 use Data::Dumper;
 
-use ParseDot::DotHelper qw[parse_nodes_from_string parse_nodes_from_file];
+use ParseDot::DotHelper qw[parse_nodes_from_string];
+use ParseDot::StructuredGraph;
+
 
 #### Global Constants ##########
 
@@ -274,116 +276,7 @@ my $_overlay_request_info = sub {
     return $mod_graph;
 };
 
-
-##
-# Sorts the children array of each node in the graph_structure
-# hash by the name of the node.  
-#
-# @param self: The object container
-# @param graph_structure_hash: A pointer to a hash containing the nodes
-# of a request-flow graph.
-##
-my $_sort_graph_structure_children = sub {
-    
-    assert(scalar(@_) == 2);
-
-    my $self = shift;
-    my $graph_structure_hash = shift;
-
-    foreach my $key (keys %$graph_structure_hash) {
-        my $node = $graph_structure_hash->{$key};
-        my @children = @{$node->{CHILDREN}};
-
-        my @sorted_children = sort {$children[$a] cmp $children[$b]} @children;
-        $node->{CHILDREN} = \@sorted_children;
-    }
-};
-                                 
-##
-# Builds a tree representation of a DOT graph passed in as a string and
-# returns a hash containing each of the nodes of tree, along with 
-# a pointer to the root node.
-# 
-# Each node of the tree looks like
-#  node = { NAME => string,
-#           CHILDREN => \@array of node IDs}
-#
-# The hash representing the entire tree returned is a hash of nodes, indexed
-# by the node ID.
-#
-# @note: This function expects the input DOT representation to have been
-# printed using a depth-first traversal.  Specifically, the source node
-# of the first edge printed MUST be the root.
-#
-# @param self: The object container
-# @param graph: A string representation of the DOT graph
-# @param graph_node_hash: Names of each node, indexed by Nodie ID
-#
-# @return a hash comprised of 
-#   { ROOT => Pointer to root node
-#     NOE_HASH => Hash of all nodes, indexed by ID}
-##
-my $_build_graph_structure = sub {
-    
-    assert(scalar(@_) == 3);
-
-    my $self = shift;
-    my $graph = shift;
-    my $graph_node_hash = shift;
-    
-    my %graph_structure_hash;
-    my $first_line = 1;
-    my $root_ptr;
-
-    my @graph_array = split(/\n/, $graph);
-
-    # Build up the graph structure hash by iterating through
-    # the edges of the graph structure
-    foreach(@graph_array) {
-        my $line = $_;
-        
-        if ($line =~m/(\d+)\.(\d+) \-> (\d+)\.(\d+)/) {
-            my $src_node_id = "$1.$2";
-            my $dest_node_id = "$3.$4";
-            
-            my $src_node_name = $graph_node_hash->{$src_node_id};
-            my $dest_node_name = $graph_node_hash->{$dest_node_id};
-            
-            if(!defined $graph_structure_hash{$dest_node_id}) {
-                my @children_array;
-                my %dest_node = (NAME => $dest_node_name,
-                                 CHILDREN => \@children_array,
-                                 ID => $dest_node_id);
-                $graph_structure_hash{$dest_node_id} = \%dest_node;
-            }
-            
-            if (!defined $graph_structure_hash{$src_node_id}) {
-                my @children_array;
-                my %src_node =  ( NAME => $src_node_name,
-                                  CHILDREN => \@children_array,
-                                  ID => $src_node_id);
-                $graph_structure_hash{$src_node_id} = \%src_node;
-            }
-            my $src_node_hash_ptr = $graph_structure_hash{$src_node_id};
-
-            # If this is the first edge parsed in the graph, then this is 
-            # also the root of the graph.  
-            if($first_line == 1) {
-                $root_ptr = $src_node_hash_ptr;
-                $first_line = 0;
-            }
-            push(@{$src_node_hash_ptr->{CHILDREN}}, $dest_node_id);
-        }
-    }
-    
-    # Finally, sort the children array of each node in the graph structure
-    # alphabetically
-    $self->$_sort_graph_structure_children(\%graph_structure_hash);
-    
-    return {ROOT =>$root_ptr, NODE_HASH =>\%graph_structure_hash};
-};
-
-
+                                
 #### Static functions ########################################################
 
 ##
@@ -809,9 +702,10 @@ sub get_root_node_given_global_id {
     assert(scalar(@_) == 2);
     my ($self, $global_id) = @_;
 
-    
-    my $req_container = $self->get_req_structure_given_global_id($global_id);
-    my $root_node_name = $req_container->{ROOT}->{NAME};
+    my $request_string  = $self->get_global_id_indexed_request();
+    my $structured_graph = StructuredGraphs::build_graph_structure($request_string);
+
+    my $root_node_name = $structured_graph->{ROOT}->{NAME};
     return $root_node_name;
 }
 
@@ -835,29 +729,26 @@ sub get_root_node_given_global_id {
 #               CHILDREN => \@array containing NODE IDs of children,
 #               ID => node_id}
 ##               
-sub get_req_structure_given_global_id {
-
-    assert(scalar(@_) == 2);
-    my ($self, $global_id) = @_;
-    
-    my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
-    my $graph = $self->$_get_local_id_indexed_request($local_id,
-                                                      $snapshot,
-                                                      $filename_idx);
-
-    my %node_name_hash;
-    # @note DO NOT include semantic labels when parsing nodes from the string
-    # in this case
-    DotHelper::parse_nodes_from_string($graph, 0, \%node_name_hash);
-    
-    my $graph_container_hash_ptr = $self->$_build_graph_structure($graph,
-                                                                  \%node_name_hash);
-
-    #print Dumper %$graph_container_hash_ptr;
-
-    return $graph_container_hash_ptr;
-}
+#sub get_req_structure_given_global_id {
+#
+#    assert(scalar(@_) == 2);
+#    my ($self, $global_id) = @_;
+#    
+#    my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
+#    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
+#    my $graph = $self->$_get_local_id_indexed_request($local_id,
+#                                                      $snapshot,
+#                                                      $filename_idx);
+##
+#
+#    
+#    my $graph_container_hash_ptr = $self->$_build_graph_structure($graph,
+#                                                                  \%node_name_hash);
+#
+#    #print Dumper %$graph_container_hash_ptr;
+#
+#    return $graph_container_hash_ptr;
+#}
 
 
 1;

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.19 2009/08/13 21:28:13 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.20 2009/08/18 04:11:35 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -1090,9 +1090,10 @@ my $_print_graphs_of_clusters_with_structural_mutations = sub {
 
     my $mutation_file = $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE};
     my $originating_file = $self->{ORIGINATING_CLUSTERS_GRAPH_FILE};
+    my $not_interesting_file = $self->{NOT_INTERESTING_GRAPH_FILE};
 
     my $cluster_info = $self->{CLUSTER_INFO_HASH};
-    my %originating_printed_hash;
+    my %originating_hash;
 
     open(my $mutation_fh, ">$mutation_file") or 
         die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
@@ -1100,7 +1101,11 @@ my $_print_graphs_of_clusters_with_structural_mutations = sub {
     open(my $originating_fh, ">$originating_file") or 
         die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
         " $originating_file.  $!\n";
+    open(my $not_interesting_fh, ">$not_interesting_file") or
+        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open" .
+        " $not_interesting_file.  $!\n";
 
+    # Print structural mutations and requests that are not mutated in any way
     for my $key (sort {$self->$_sort_clusters_wrapper("prob_factor")} keys %{$cluster_info}) {
         
         my $this_cluster_info = $cluster_info->{$key};
@@ -1112,14 +1117,25 @@ my $_print_graphs_of_clusters_with_structural_mutations = sub {
             
             foreach(@{$candidate_originators}) {
                 print "Structural Mutation: $key, Candidate Originator: $_\n";
-                if(!defined $originating_printed_hash{$_}) {
-                    my $candidate_originator_info = $cluster_info->{$_};
-                    $self->$_print_graph($_, $candidate_originator_info, $originating_fh);
-                    $originating_printed_hash{$_} = 1;
+                if(!defined $originating_hash{$_}) {
+                    $originating_hash{$_} = 1;
                 }
             }
+        } elsif(($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $NO_MUTATION) {
+            $self->$_print_graph($key, $this_cluster_info, $not_interesting_fh);
         }
     }
+
+    # Print originating clusters
+    for my $key (sort {$a <=> $b} keys %originating_hash) {
+        my $this_cluster_info = $cluster_info->{$key};
+        $self->$_print_graph($key, $this_cluster_info, $originating_fh);
+    }
+
+    # Close output files
+    close($mutation_fh);
+    close ($originating_fh);
+    close ($not_interesting_fh);
 };
 
 
@@ -1164,11 +1180,6 @@ my $_print_all_clusters = sub {
         # Collect some aggregate statistics
         $likelihood_diff += $likelihoods->[1] - $likelihoods->[0];
     }
-
-    printf $out_fh "\n\nLikelihood diff: %-12.3f\n", $likelihood_diff;
-    my $cluster_freqs = $graph_info->get_snapshot_frequencies();
-    print $out_fh "Total s0 requests: $cluster_freqs->[0]\n";
-    print $out_fh "Total s1 requests: $cluster_freqs->[1]\n";
 
     close($out_fh);
 };
@@ -1243,6 +1254,7 @@ sub new {
     $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/response_time_changes.dot";
     $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/structural_mutations.dot";
     $self->{ORIGINATING_CLUSTERS_GRAPH_FILE} = "$output_dir/originating_clusters.dot";
+    $self->{NOT_INTERESTING_GRAPH_FILE} = "$output_dir/not_interesting_clusters.dot";
     $self->{CLUSTER_INFO_TEXT_FILE} = "$output_dir/cluster_info.dat";
 
     # Create the interim output directory
