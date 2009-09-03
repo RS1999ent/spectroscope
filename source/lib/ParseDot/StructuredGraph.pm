@@ -1,11 +1,26 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraphs.pm, v$
+# $cmuPDL: StructuredGraph.pm,v 1.1 2009/08/26 21:28:36 rajas Exp $
 
 ## 
-# Given a dot graph, this module builds a structured version of it and the structure
-##
+# This module can be used to build a structured request-flow graph.  
+# The request-flow graph can be build in two ways.
+#
 
+# 1)The graph can be built based on its DOT representation by calling
+# build_graph_structure_from_dot().  Once this function is called, the graph has
+# been finalized.  It cannot be modified by using any of the 'create_node' or
+# 'create_root' fns.  Only the 'get' accessor functions cna be used to
+# retrievethe various elements of the graph.
+#
+# 2)The graph can be built iteratively using the create_root() and create_node()
+# fns.  The caller should use these fns to build the complete graph, then when
+# done, call finalize_graph_structure().  After finalize_graph_structure() is
+# called, the accessor functions can be used to access the individual elements
+# of the graph.
+#
+# This object also contains a method for printing a structured graph to DOT format
+##
 package StructuredGraphs;
 
 use strict;
@@ -27,7 +42,9 @@ no define DEBUG =>;
 
 ##
 # Sorts the children array of each node in the graph_structure
-# hash by the name of the node.  
+# hash by the name of the node.  This is done to prevent false differences
+# between two different graphs caused to due to ordering differences in the
+# children of a node.
 #
 # @param graph_structure_hash: A pointer to a hash containing the nodes
 # of a request-flow graph.
@@ -41,36 +58,38 @@ sub sort_graph_structure_children {
     foreach my $key (keys %$graph_structure_hash) {
         my $node = $graph_structure_hash->{$key};
         my @children = @{$node->{CHILDREN}};
-
-        my @sorted_children = sort {$children[$a] cmp $children[$b]} @children;
+        
+        my @sorted_children = sort {$graph_structure_hash->{$a}->{NAME} cmp 
+                                        $graph_structure_hash->{$b}->{NAME}} @children;
         $node->{CHILDREN} = \@sorted_children;
     }
 };
 
 
-#### API functions ############
-
 ##
-# Builds a tree representation of a DOT graph passed in as a string and
-# returns a hash containing each of the nodes of tree, along with 
-# a pointer to the root node.
+# Builds a tree representation of a DOT graph passed in as a string and finalizes
+# the graph.  This means that only the "get" accessor methods can be used to retrieve
+# elements of the tree after this function is called.
 # 
-# Each node of the tree looks like
-#  node = { NAME => string,
-#           CHILDREN => \@array of node IDs}
-#
-# The hash representing the entire tree returned is a hash of nodes, indexed
-# by the node ID.
-#
 # @note: This function expects the input DOT representation to have been
 # printed using a depth-first traversal.  Specifically, the source node
 # of the first edge printed MUST be the root.
 #
+# @todo: This method should not be visible to the external caller.  The new()
+# routine below should be the only function that can call this routine.
+# Unfortunately MatchGraphs.pm and DecisionTree.pm use this function currently;
+# they need to be modified to use the object interface.
+#
 # @param graph: A string representation of the DOT graph
 #
-# @return a pointer to a hash comprised of 
-#   { ROOT => Pointer to root node
-#     NODE_HASH => Hash of all nodes, indexed by ID}
+# @return: A hash: 
+#    { ROOT => reference to hash containing root node info
+#      NODE_HASH => reference to hash of nodes keyed by node id
+#
+# Each node is a hash that is comprised of: 
+#   { NAME => string,
+#     CHILDREN => ref to array of IDs of children
+#     ID => This Node's ID
 ##
 sub build_graph_structure {
     
@@ -131,6 +150,207 @@ sub build_graph_structure {
     # Finally, sort the children array of each node in the graph structure
     # alphabetically
     sort_graph_structure_children(\%graph_structure_hash);
-    
-    return {ROOT =>$root_ptr, NODE_HASH =>\%graph_structure_hash};
+
+    return { ROOT => $root_ptr, NODE_HASH => \%graph_structure_hash};
 };
+
+
+#### API functions ############
+
+##
+# Creates a new node and returns it
+#
+# @param name: The name to assign the node
+# @return: A pointer to a hash that contains the node
+##
+sub create_node {
+
+    assert(scalar(@_) == 2);
+    my ($self, $name) = @_;
+    
+    my @children_array;
+    my %node = { NAME => $name,
+                 CHILDREN => \@children_array,
+                 ID => $self->{CURRENT_NODE_ID}++ };
+
+    
+}
+
+
+#### Private Object functions ###############################
+
+
+##### Public Object functions ##############################
+
+##
+# Creates a new structured graph object
+#
+# @param proto
+# @param req_str: (OPTIONAL) A request in DOT format.  If specified
+#  a structured graph will be created based on this string and finalized
+#  immediately.[
+##
+sub new {
+    
+    assert(scalar(@_) == 1 || scalar(@_) == 2);
+    
+    my ($proto, $req_str);
+    if (scalar(@_) == 2) {
+        ($proto, $req_str) = @_;
+    } else {
+        ($proto) = @_;
+    }
+
+    my $class = ref($proto) || $proto;
+    my $self = {};
+
+    if(defined $req_str) {
+        my $container = build_graph_structure($req_str);
+        $self->{GRAPH_STRUCTURE_HASH} = $container->{NODE_HASH};
+        $self->{ROOT} = $container->{ROOT};
+        $self->{CURRENT_NODE_ID} = 1;
+        $self->{FINALIZED} = 1;
+
+    } else {
+        my %graph_structure_hash;
+        $self->{GRAPH_STRUCTURE_HASH} = \%graph_structure_hash;
+        $self->{ROOT} = undef;
+        $self->{CURRENT_NODE_ID} = 1;
+        $self->{FINALIZED} = 0;
+    }
+
+    bless($self, $class);
+}
+
+
+##
+# Interface to adding a root node
+#
+# @param self: The 
+# @param name: The name of the root node
+#
+# @return: An id for the root node
+##
+sub add_root {
+    assert(scalar(@_) == 2);
+    my ($self, $name) = @_;
+
+    assert(!defined $self->{ROOT});
+    assert($self->{FINALIZED} == 0);
+
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+
+    my $node = create_node($name);
+
+    $graph_structure_hash->{$node->{ID}} = $node;
+    $self->{ROOT} = $node;
+    $self->{FINALIZED} = 0;
+
+    return $node->{ID};
+};
+
+
+##
+# Interface for adding a child to a given parent
+#
+# @param self: The object container 
+# @param parent_node_id: ID of the parent node
+# @param child_node_name: ID of the child node
+##
+sub add_child {
+    assert(scalar(@_) == 3);
+    my ($self, $parent_node_id, $child_node_name) = @_;
+
+    assert($self->{FINALIZED} == 0);
+    
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+
+    my $child_node = create_node($child_node_name);    
+    my $parent_node = $graph_structure_hash->{$parent_node_id};
+
+    push(@{$parent_node->{CHILDREN}}, $child_node->{ID});
+    $graph_structure_hash->{$child_node->{ID}} = $child_node;
+
+
+    return $child_node->{ID};
+}
+
+
+##
+# Finalizes the graph structure by ordering children nodes at
+# each level in alphabetical order.  This function should be called
+# after creating the complete graph and before retrieving individual
+# nodes.
+#
+# @param: self: The object container
+##
+sub finalize_graph_structure {
+    
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+    
+    sort_graph_structure_children($self->{GRAPH_STRUCTURE_HASH});
+    $self->{FINALIZED} = 1;
+}
+
+
+##
+# Returns the root node's id
+#
+# @param self: The object container
+# 
+# @return: The ID of the rootnode
+##
+sub get_root_node_id {
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+    
+    assert(defined $self->{ROOT});
+    
+    return $self->{ROOT}->{ID};
+}
+
+
+##
+# Interface for getting the name of a node given it's ID
+#
+# @param node_id: The ID of the node
+#
+# @return: A string indicating the node ID
+##
+sub get_node_name {
+    assert(scalar(@_) == 2);
+    my ($self, $node_id) = @_;
+    
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+    
+    assert($self->{FINALIZED});
+    assert(defined $graph_structure_hash->{node_id});
+    
+    return $graph_structure_hash->{$node_id}->{NAME};
+}
+
+
+##
+# Interface for getting the children IDs of a node
+#
+# @param self: The object container
+# @param node_id: The ID of the node for which to return children
+# 
+# @return a pointer to an array of node ids
+##
+sub get_children_ids {
+    assert(scalar(@_) == 2);
+    my ($self, $node_id) = @_;
+    
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+    
+    assert($self->{FINALIZED});
+    
+    assert(defined $graph_structure_hash->{$node_id});
+    
+    my @children_copy = @{$graph_structure_hash->{$node_id}->{CHILDREN}};
+    
+    return \@children_copy;
+}
+    
