@@ -1,12 +1,11 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.2 2009/09/03 20:20:05 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.3 2009/09/07 02:40:30 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
 # The request-flow graph can be build in two ways.
 #
-
 # 1)The graph can be built based on its DOT representation by calling
 # build_graph_structure_from_dot().  Once this function is called, the graph has
 # been finalized.  It cannot be modified by using any of the 'create_node' or
@@ -21,13 +20,14 @@
 #
 # This object also contains a method for printing a structured graph to DOT format
 ##
-package StructuredGraphs;
+package StructuredGraph;
 
 use strict;
 use warnings;
 use Test::Harness::Assert;
 
 use ParseDot::DotHelper qw[parse_nodes_from_string];
+use Data::Dumper;
 
 require Exporter;
 our @EXPORT_OK = qw(build_graph_structure);
@@ -157,10 +157,10 @@ sub build_graph_structure {
 
     return { ROOT => $root_ptr, NODE_HASH => \%graph_structure_hash,
              EDGE_LATENCIES_HASH => \%edge_latencies_hash};
-};
+}
 
 
-#### API functions ############
+#### Private functions ############
 
 ##
 # Creates a new node and returns it
@@ -168,21 +168,92 @@ sub build_graph_structure {
 # @param name: The name to assign the node
 # @return: A pointer to a hash that contains the node
 ##
-sub create_node {
+my $_create_node = sub {
 
     assert(scalar(@_) == 2);
     my ($self, $name) = @_;
     
     my @children_array;
-    my %node = { NAME => $name,
+    my %node = ( NAME => $name,
                  CHILDREN => \@children_array,
-                 ID => $self->{CURRENT_NODE_ID}++ };
+                 ID => $self->{CURRENT_NODE_ID}++ );
 
-    
-}
+    return \%node;
+};
 
 
-#### Private Object functions ###############################
+##
+# Helper function for print_dot().  Prints the nodes
+# of this graph in DOT format to the fd specified
+#
+# @param self: The object container
+# @param fd: The file descriptor
+##
+my $_print_dot_nodes = sub {
+    assert(scalar(@_) == 2);
+    my ($self, $fd) = @_;
+
+    my $hash = $self->{GRAPH_STRUCTURE_HASH};
+
+    foreach my $node_id (keys %{$hash}) {
+        my $name = $hash->{$node_id}->{NAME};
+        
+        printf $fd "%s [label=\"%s\"]\n", $node_id, $name;
+    }
+};
+
+
+##
+# Helper function for print_dot().  Prints edges
+# of this graph in DOT format to the fd specified
+#
+# @param self: The object container
+# @param src_node_id: The source node of the edge
+# @param dest_node_id: The dest node of the edge
+# @param traversed: Whether or not the path rooted
+#  at dest_node_id has already been traversed
+# @param fd: The file descriptor
+##
+my $_print_dot_edges;
+$_print_dot_edges = sub {
+    assert(scalar(@_) == 5);
+    my ($self, $src_node_id, $dest_node_id, $traversed, $fd) = @_;
+
+    my $graph = $self->{GRAPH_STRUCTURE_HASH};
+    my $edge_latencies_hash = $self->{EDGE_LATENCIES_HASH};
+
+    if (!defined $src_node_id) {
+        my $dest_node = $graph->{$dest_node_id};
+        my $children_ids = $dest_node->{CHILDREN};
+        
+        foreach (@{$children_ids}) {
+            $self->$_print_dot_edges($dest_node_id, $_, $traversed, $fd);
+        }
+        return;
+    }
+
+    # Print the edge latency
+    my $edge_latency = $edge_latencies_hash->{$src_node_id}{$dest_node_id};
+    assert(defined $edge_latency);
+
+    printf $fd "%s -> %s [label=\"R: %f us\"]\n", 
+    $src_node_id, $dest_node_id, $edge_latency;
+
+    # If the path rooted at dest_id has already been traversed , simply return
+    if (defined $traversed->{$dest_node_id}) {
+        return;
+    }
+
+    # Call print_dot_edges recursively on children
+    my $dest_node = $graph->{$dest_node_id};
+    my $children_ids = $dest_node->{CHILDREN};
+
+    foreach (@{$children_ids}) {
+        $self->$_print_dot_edges($dest_node_id, $_, $traversed, $fd);
+    }
+
+    $traversed->{$dest_node_id} = 1;
+};
 
 
 ##### Public Object functions ##############################
@@ -219,7 +290,9 @@ sub new {
 
     } else {
         my %graph_structure_hash;
+        my %edge_latencies_hash;
         $self->{GRAPH_STRUCTURE_HASH} = \%graph_structure_hash;
+        $self->{EDGE_LATENCIES_HASH} = \%edge_latencies_hash;
         $self->{ROOT} = undef;
         $self->{CURRENT_NODE_ID} = 1;
         $self->{FINALIZED} = 0;
@@ -241,12 +314,13 @@ sub add_root {
     assert(scalar(@_) == 2);
     my ($self, $name) = @_;
 
+    my $blah = $self->{ROOT};
     assert(!defined $self->{ROOT});
     assert($self->{FINALIZED} == 0);
 
     my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
 
-    my $node = create_node($name);
+    my $node = $self->$_create_node($name);
 
     $graph_structure_hash->{$node->{ID}} = $node;
     $self->{ROOT} = $node;
@@ -265,7 +339,7 @@ sub add_root {
 # @param the edge latency for the parent/child
 ##
 sub add_child {
-    assert(scalar(@_) == 3);
+    assert(scalar(@_) == 4);
     my ($self, $parent_node_id, $child_node_name, $edge_latency) = @_;
 
     assert($self->{FINALIZED} == 0);
@@ -273,7 +347,7 @@ sub add_child {
     my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
     my $edge_latencies_hash = $self->{EDGE_LATENCIES_HASH};
 
-    my $child_node = create_node($child_node_name);    
+    my $child_node = $self->$_create_node($child_node_name);    
     my $parent_node = $graph_structure_hash->{$parent_node_id};
     
     push(@{$parent_node->{CHILDREN}}, $child_node->{ID});
@@ -334,8 +408,7 @@ sub get_node_name {
     
     my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
     
-    assert($self->{FINALIZED});
-    assert(defined $graph_structure_hash->{node_id});
+    assert(defined $graph_structure_hash->{$node_id});
     
     return $graph_structure_hash->{$node_id}->{NAME};
 }
@@ -351,8 +424,6 @@ sub get_node_name {
 sub get_edge_latency  {
     assert(scalar(@_) == 3);
     my ($self, $parent_id, $child_id) = @_;
-
-    assert($self->{FINALIZED});
 
     my $edge_latencies_hash = $self->{EDGE_LATENCIES_HASH};
  
@@ -374,12 +445,30 @@ sub get_children_ids {
     
     my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
     
-    assert($self->{FINALIZED});
-    
     assert(defined $graph_structure_hash->{$node_id});
     
     my @children_copy = @{$graph_structure_hash->{$node_id}->{CHILDREN}};
     
     return \@children_copy;
 }
-    
+
+
+##
+# Prints out a depth-first DOT representation of the graph
+#
+# @param fd: The file to which to print the grpah
+##
+sub print_dot {
+
+    assert(scalar(@_) == 2);
+    my ($self, $fd) = @_;
+
+    printf $fd "Digraph G {\n";
+
+    $self->$_print_dot_nodes($fd);
+
+    my %traversed;
+    $self->$_print_dot_edges(undef, $self->{ROOT}->{ID}, \%traversed, $fd);
+
+    printf $fd "}\n";
+}

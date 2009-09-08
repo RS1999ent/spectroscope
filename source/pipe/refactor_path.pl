@@ -1,19 +1,23 @@
 #! /usr/bin/perl -w
 
+# $cmuPDL: refactor_path.pl, $v
+
 ##
 # Given a critical path, this function 'refactors' all the contiguous nodes that
 # originate from a single component into one edge.  The components to refactor
 # are specified in the input.
 ##
 
+#### Package declarations ###############################
+
 use strict;
-use warnings;
 use Test::Harness::Assert;
 use Getopt::Long;
 
 use lib '../lib';
 use ParseDot::StructuredGraph;
 
+no warnings 'recursion';
 
 ##### Global variables ####
 
@@ -39,7 +43,7 @@ sub parse_options {
     
     my @tmp;
     
-    GetOptions("refactor=s{1,10}"       => \@tmp);
+    GetOptions("refactor=s{1,10}" => \@tmp);
     
     if(!defined $tmp[0]) {
         print_usage();
@@ -85,12 +89,11 @@ sub get_component {
     my $name = $graph->get_node_name($node_id);
     my $component;
 
-    if ($name =~ /(.+)__.*/) {
+    if ($name =~ /(e[0-9]+)__.+/) {
         $component = $1;
     }
 
     assert(defined $component);
-
     return $component;
 }
 
@@ -112,12 +115,12 @@ sub get_component {
 # @param traversed: Whether the path rooted at DEST_ID has already been traversed
 ##
 sub refactor_graph {
-    
-    assert(scalar(@_) == 5);
+
+    assert(scalar(@_) == 4);
     my ($orig_req_info, $refactored_req_info, $accum_latency, $traversed) = @_;
 
     my $orig_graph = $orig_req_info->{GRAPH};
-    my $refactored_graph = $orig_req_info->{GRAPH};
+    my $refactored_graph = $refactored_req_info->{GRAPH};
     my $new_accum_latency;
 
     my $comp = get_component($orig_req_info->{DEST_ID}, $orig_graph);
@@ -129,7 +132,7 @@ sub refactor_graph {
 
         if (is_refactorable($comp)) {
             # Case 1A: Root node of original request is refactorable
-            $root = $refactored_graph->add_root("$comp" . "_START");
+            $root = $refactored_graph->add_root("$comp" . "__START");
         } else {
             # Case 1B: Root node of original request is refactorable
             my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
@@ -147,13 +150,24 @@ sub refactor_graph {
     # Case 2: Original_req_info->{DEST_ID} contains a node posted on the same
     # component as the node pointed to by refactored->{ID}
     if ($refactored_comp eq $comp) {
+
+        my $children_ids = $orig_graph->get_children_ids($orig_req_info->{DEST_ID});
+        my $edge_latency = $orig_graph->get_edge_latency($orig_req_info->{SRC_ID}, 
+                                                         $orig_req_info->{DEST_ID});
         
-        if (is_refactorable($comp)) {
+        if (is_refactorable($comp) && scalar(@{$children_ids} > 0)) {
             # Case 2A: The component is refactorable.  Simply accomulate the edge latency
-            my $new_accum_latency = $accum_latency + 
-                $orig_graph->get_edge_latency($orig_req_info->{SRC_ID}, $orig_req_info->{DEST_ID});
-        } else {
-            # Case 2B: The component is not refactorable.  Simply copy over edge
+            $new_accum_latency = $accum_latency + $edge_latency;
+            
+        } elsif (is_refactorable($comp)) {
+            # Case 2B: Original_req_info->{DEST_ID} has no children, so we have to create an "END" node
+            my $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
+                                                           $refactored_comp . "__END",
+                                                           $accum_latency + $edge_latency);
+            $refactored_req_info->{ID} = $new_node_id;
+            $new_accum_latency = 0;
+        } else {                                                     
+            # Case 2C: The component is not refactorable.  Simply copy over edge
             assert($accum_latency == 0);
             my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
             my $latency = $orig_graph->get_edge_latency($orig_req_info->{SRC_ID}, $orig_req_info->{DEST_ID});
@@ -175,8 +189,8 @@ sub refactor_graph {
         # Case 3-0: The refactored graph's node is stuck on a refactorable component.  End it.
         if(is_refactorable($refactored_comp)) {
             $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
-                                                           "$refactored_comp" . "_END",
-                                                           $accum_latency);
+                                                        "$refactored_comp" . "__END",
+                                                        $accum_latency);
             $refactored_req_info->{ID} = $new_node_id;
             $new_accum_latency = 0;
         }
@@ -187,7 +201,7 @@ sub refactor_graph {
         # Case 3A: The original request node is refactorable.  Create a new start node
         if(is_refactorable($comp)) {
             $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
-                                                                "$comp" . "_START",
+                                                                "$comp" . "__START",
                                                                 $edge_latency);
             $refactored_req_info->{ID} = $new_node_id            
         } else {
@@ -205,11 +219,15 @@ sub refactor_graph {
   traverse_children:
     my $children_ids = $orig_graph->get_children_ids($orig_req_info->{DEST_ID});
     my $new_src_node = $orig_req_info->{DEST_ID};
+    my $num = scalar(@{$children_ids});
+
     foreach (@{$children_ids}) {
-        my $new_orig_req = {SRC_ID => $orig_graph->{DEST_ID},
+
+        my %new_orig_req_info = (SRC_ID => $orig_req_info->{DEST_ID},
                             DEST_ID => $_,
-                            GRAPH => $orig_graph->{GRAPH}};
-        refactor_graph($new_orig_req, $refactored_req_info, $new_accum_latency, $traversed);
+                            GRAPH => $orig_graph);
+
+        refactor_graph(\%new_orig_req_info, $refactored_req_info, $new_accum_latency, $traversed);
     }
 }
 
@@ -224,19 +242,29 @@ $/ = '}';
 while (<STDIN>) {
     my $dot_request = $_;
 
+    my $header;
+    if ($dot_request =~ /(\# .*)\n/)  {
+        $header = $1;
+    } else {
+        next;
+    }
+    assert (defined $header);
+
     my $orig_req_graph = new StructuredGraph($dot_request);
-    my $orig_req_info = { SRC_ID => undef,
+    my %orig_req_info = ( SRC_ID => undef,
                           GRAPH => $orig_req_graph,
-                          DEST_ID => $orig_req_graph->get_root_node_id()
-                      };
+                          DEST_ID => $orig_req_graph->get_root_node_id());
+
     my $refactored_req_graph = new StructuredGraph();
-    my $refactored_req_info = { ID => undef,
-                                GRAPH => $refactored_req_graph };
+    my %refactored_req_info = ( ID => undef,
+                                GRAPH => $refactored_req_graph);
     my %traversed;
     
-    refactor_graph($orig_req_info, $refactored_req_info, 0, \%traversed);
+    refactor_graph(\%orig_req_info, \%refactored_req_info, 0, \%traversed);
 
-    #$refactored_req_graph->PrintDot();}
+    print "$header\n";
+    $refactored_req_graph->print_dot(\*STDOUT);
+    print "\n";
 }
 
 
