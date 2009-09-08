@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.3 2009/09/07 02:40:30 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.4 2009/09/08 01:24:48 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -198,7 +198,7 @@ my $_print_dot_nodes = sub {
     foreach my $node_id (keys %{$hash}) {
         my $name = $hash->{$node_id}->{NAME};
         
-        printf $fd "%s [label=\"%s\"]\n", $node_id, $name;
+        printf $fd "%s.%s [label=\"%s\\n\"]\n", $node_id, $node_id, $name;
     }
 };
 

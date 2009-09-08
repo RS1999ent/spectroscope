@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.10 2009/08/06 17:33:20 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.11 2009/08/08 09:35:21 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -150,14 +150,14 @@ my $_handle_nodes = sub {
 	while(<$in_data_fh>) {
         
 		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
-            
+
 			# Add the Node label to the alphabet hash 
-            if (defined $4) { 
+            if (!$4 eq '') { 
                 $node_name = $3 . "_" . $4; 
             } else {
                 $node_name = $3;
             }
-            
+
 			if(!defined $alphabet_hash->{$node_name}) {
 				$alphabet_hash->{$node_name} = $self->{ALPHABET_COUNTER}++;
                 
