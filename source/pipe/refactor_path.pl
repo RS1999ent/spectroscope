@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: refactor_path.pl, $v
+# $cmuPDL: refactor_path.pl,v 1.2 2009/09/08 01:24:48 rajas Exp $v
 
 ##
 # Given a critical path, this function 'refactors' all the contiguous nodes that
@@ -122,6 +122,7 @@ sub refactor_graph {
     my $orig_graph = $orig_req_info->{GRAPH};
     my $refactored_graph = $refactored_req_info->{GRAPH};
     my $new_accum_latency;
+    my $new_refactored_node_id;
 
     my $comp = get_component($orig_req_info->{DEST_ID}, $orig_graph);
 
@@ -132,14 +133,13 @@ sub refactor_graph {
 
         if (is_refactorable($comp)) {
             # Case 1A: Root node of original request is refactorable
-            $root = $refactored_graph->add_root("$comp" . "__START");
+            $new_refactored_node_id = $refactored_graph->add_root("$comp" . "__START");
         } else {
             # Case 1B: Root node of original request is refactorable
             my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
-            $root = $refactored_graph->add_root($name);
+            $new_refactored_node_id = $refactored_graph->add_root($name);
         }
 
-        $refactored_req_info->{ID} = $root;
         $new_accum_latency = 0;
 
         goto traverse_children;
@@ -158,22 +158,20 @@ sub refactor_graph {
         if (is_refactorable($comp) && scalar(@{$children_ids} > 0)) {
             # Case 2A: The component is refactorable.  Simply accomulate the edge latency
             $new_accum_latency = $accum_latency + $edge_latency;
-            
+            $new_refactored_node_id = $refactored_req_info->{ID};
         } elsif (is_refactorable($comp)) {
             # Case 2B: Original_req_info->{DEST_ID} has no children, so we have to create an "END" node
-            my $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
-                                                           $refactored_comp . "__END",
-                                                           $accum_latency + $edge_latency);
-            $refactored_req_info->{ID} = $new_node_id;
+            $new_refactored_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
+                                                                      $refactored_comp . "__END",
+                                                                      $accum_latency + $edge_latency);
             $new_accum_latency = 0;
         } else {                                                     
             # Case 2C: The component is not refactorable.  Simply copy over edge
             assert($accum_latency == 0);
             my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
             my $latency = $orig_graph->get_edge_latency($orig_req_info->{SRC_ID}, $orig_req_info->{DEST_ID});
-            my $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID}, $name, $latency);
+            $new_refactored_node_id = $refactored_graph->add_child($refactored_req_info->{ID}, $name, $latency);
 
-            $refactored_req_info->{ID} = $new_node_id;
             $new_accum_latency = 0;
         }
         
@@ -184,15 +182,14 @@ sub refactor_graph {
     # last node created for $refactored_req_info->{ID}
     if (!($refactored_comp eq $comp)) {
         
-        my $new_node_id;
-
         # Case 3-0: The refactored graph's node is stuck on a refactorable component.  End it.
         if(is_refactorable($refactored_comp)) {
-            $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
-                                                        "$refactored_comp" . "__END",
-                                                        $accum_latency);
-            $refactored_req_info->{ID} = $new_node_id;
+            $new_refactored_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
+                                                                   "$refactored_comp" . "__END",
+                                                                   $accum_latency);
             $new_accum_latency = 0;
+        } else {
+            $new_refactored_node_id = $refactored_req_info->{ID};
         }
 
         my $edge_latency = $orig_graph->get_edge_latency($orig_req_info->{SRC_ID},
@@ -200,19 +197,17 @@ sub refactor_graph {
 
         # Case 3A: The original request node is refactorable.  Create a new start node
         if(is_refactorable($comp)) {
-            $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
+            $new_refactored_node_id = $refactored_graph->add_child($new_refactored_node_id,
                                                                 "$comp" . "__START",
                                                                 $edge_latency);
-            $refactored_req_info->{ID} = $new_node_id            
         } else {
             # Case 3C: Original request node is not refactorable.  Create a new facsimile node.
             my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
-            $new_node_id = $refactored_graph->add_child($refactored_req_info->{ID},
+            $new_refactored_node_id = $refactored_graph->add_child($new_refactored_node_id,
                                                            $name,
                                                            $edge_latency);            
         }
 
-        $refactored_req_info->{ID} = $new_node_id;
         $new_accum_latency = 0;
     }
 
@@ -227,7 +222,11 @@ sub refactor_graph {
                             DEST_ID => $_,
                             GRAPH => $orig_graph);
 
-        refactor_graph(\%new_orig_req_info, $refactored_req_info, $new_accum_latency, $traversed);
+        my %new_refactored_req_info = ( ID => $new_refactored_node_id,
+                                        GRAPH => $refactored_graph );
+
+        refactor_graph(\%new_orig_req_info, \%new_refactored_req_info, 
+                       $new_accum_latency, $traversed);
     }
 }
 
