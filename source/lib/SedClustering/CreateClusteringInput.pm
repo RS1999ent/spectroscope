@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.11 2009/08/08 09:35:21 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.12 2009/09/08 23:51:31 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -329,15 +329,19 @@ my $_handle_requests = sub {
 ## 
 # Computes the distance between the unique string
 # representation of requests.
+#
+# @param self: The object container
+# @param bypass_sed: If set, SeD calculation will be skipped 
+# and "fake" SeD values inserted
 my $_compute_distance_matrix = sub {
 
-    assert(scalar(@_) == 1);
-    my ($self) = @_;
+    assert(scalar(@_) == 2);
+    my ($self, $bypass_sed) = @_;
 
     my $sed_obj = new Sed($self->{INPUT_VECTOR_FILE},
                           $self->{DISTANCE_MATRIX_FILE});
 
-    $sed_obj->calculate_edit_distance();
+    $sed_obj->calculate_edit_distance($bypass_sed);
     undef $sed_obj;
 };
 
@@ -449,9 +453,15 @@ sub do_output_files_exist {
 ##
 # Takes input graphs and converts them into a format usable
 # by MATLAB.  Also computes the distance matrix for each request.
+#
+# @param self: The object container
+# @param bypass_sed: If set to one, "fake SeD" will be
+#  inserted and the actual (slow) SeD calculation skipped
 ##        
 sub create_clustering_input {
-    my $self = shift;
+
+    assert(scalar(@_) == 2);
+    my ($self, $bypass_sed) = @_;
 
     $self->$_remove_existing_files();
 
@@ -465,7 +475,7 @@ sub create_clustering_input {
     $self->$_print_alphabet_mapping();
 
     # Calculate the string-edit distance
-    $self->$_compute_distance_matrix();
+    $self->$_compute_distance_matrix($bypass_sed);
 
 }		
 

@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm,v 1.1 2009/08/04 07:23:36 rajas Exp $
+# $cmuPDL: Sed.pm,v 1.2 2009/08/06 17:33:20 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -122,10 +122,13 @@ my $_calculate_edit_distance_inner_loop = sub {
 # strings is stored in $self->{DISTANCE_HASH};
 #
 # @param self: The object container
+# @param bypass_sed: If set to 1, placeholder values for the sed will be
+# inserted and the actual sed calculation will be skipped
 ##
 my $_calculate_edit_distance_internal = sub {
-    assert(scalar(@_) == 1);
-    my ($self) = @_;
+
+    assert(scalar(@_) == 2);
+    my ($self, $bypass_sed) = @_;
     
     assert(defined $self->{INPUT_ARRAY});
     my $input_array_ref = $self->{INPUT_ARRAY};
@@ -136,6 +139,13 @@ my $_calculate_edit_distance_internal = sub {
 
         my @item1 = split(' ', $input_array_ref->[$i]);
         for (my $j = $i; $j < scalar(@{$input_array_ref}); $j++) {
+
+            if ($bypass_sed == 1) {
+                # Don't go through trouble of calculating SeD.  Just insert fake
+                # placeholder values, as SeD will not be used for anything usefl
+                $distance_hash{$i+1}{$j+1} = 1;
+                next;
+            }
 
             if($j == $i) {
                 $distance_hash{$i+1}{$j+1} = 0;
@@ -271,14 +281,18 @@ sub do_output_files_exist {
 # Specifically, it is of the form i, j: <distance>.  Where i corresponds to the
 # string at line in the input file and j corresponds to the string at line j in
 # the input file.
+#
+# @param self: The object contaienr
+# @param bypass_sed: If set, "fake" SeD values will be inserted
+#  and the actual (slow) SeD calculation will be skipped
 ##
 sub calculate_edit_distance {
     
-    assert(scalar(@_) == 1);
-    my ($self) = @_;
+    assert(scalar(@_) == 2);
+    my ($self, $bypass_sed) = @_;
 
     $self->$_load_input_file();
-    $self->$_calculate_edit_distance_internal();
+    $self->$_calculate_edit_distance_internal($bypass_sed);
     $self->$_print_edit_distance();
 
 }

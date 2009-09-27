@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.9 2009/08/18 04:11:35 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.10 2009/08/20 22:09:39 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -74,6 +74,11 @@ my $g_create_clustering_input;
 my $g_parse_requests;
 
 
+# Whether or not to bypass SeD calculation. If bypassed, 
+# "fake" SeD values will be inserted and the (actual) SeD calculation
+# will not be performed
+my $g_bypass_sed = 0;
+
 # The names of the files that must be returned by the convert data script
 #my %converted_req_names => (MATLAB_INPUT_VECTOR => "",
 #                            MAPPING_FROM_INPUT_VECTOR_TO_GLOBAL_IDS => "",
@@ -121,7 +126,7 @@ if($clustering_output_files_exist == 0 ||
         "clustering files exist: $clustering_output_files_exist\n";
     
     $g_parse_requests->parse_requests();
-    $g_create_clustering_input->create_clustering_input();
+    $g_create_clustering_input->create_clustering_input($g_bypass_sed);
 }    
 
 ##
@@ -183,7 +188,8 @@ sub parse_options {
 			   "pass_through+"             => \$g_pass_through,
                "originators=s"             => \$g_originators,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
-               "interesting_sensitivity:i" => \$g_interesting_sensitivity);
+               "interesting_sensitivity:i" => \$g_interesting_sensitivity,
+               "bypass_sed+"               => \$g_bypass_sed);
 
     # These parameters must be specified by the user
     if (!defined $g_output_dir || !defined $g_snapshot0_files[0] ||
