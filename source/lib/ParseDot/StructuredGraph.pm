@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.4 2009/09/08 01:24:48 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.5 2009/09/08 23:51:31 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -236,8 +236,8 @@ $_print_dot_edges = sub {
     my $edge_latency = $edge_latencies_hash->{$src_node_id}{$dest_node_id};
     assert(defined $edge_latency);
 
-    printf $fd "%s -> %s [label=\"R: %f us\"]\n", 
-    $src_node_id, $dest_node_id, $edge_latency;
+    printf $fd "%s.%s -> %s.%s [label=\"R: %f us\"]\n", 
+    $src_node_id, $src_node_id, $dest_node_id, $dest_node_id, $edge_latency;
 
     # If the path rooted at dest_id has already been traversed , simply return
     if (defined $traversed->{$dest_node_id}) {
