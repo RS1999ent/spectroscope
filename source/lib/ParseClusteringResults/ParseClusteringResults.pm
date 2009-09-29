@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.20 2009/08/18 04:11:35 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.21 2009/08/26 21:28:36 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -1174,7 +1174,7 @@ my $_print_all_clusters = sub {
         printf $out_fh "%-15d\t%-40s\t%-1.14f\t%-1.14f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\n",
         $key, $mutation_type_string, $likelihoods->[0], $likelihoods->[1], 
         $response_time_stats->{AVG_LATENCIES}->[0], $response_time_stats->{AVG_LATENCIES}->[1],
-        $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[0],
+        $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[1],
         $freqs->[0], $freqs->[1];
 
         # Collect some aggregate statistics
@@ -1482,16 +1482,16 @@ sub get_mutation_type {
     my $mutation_type_string;
 
     if (($mutation_type & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
-        $mutation_type_string = "Structural Mutation";
+        $mutation_type_string = "Structural_Mutation";
     } elsif (($mutation_type & $MUTATION_TYPE_MASK) == $ORIGINATING_CLUSTER) {
-        $mutation_type_string = "Originating Cluster";
+        $mutation_type_string = "Originating_Cluster";
     }
 
     if (($mutation_type & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
         if (defined $mutation_type_string) {
             $mutation_type_string = $mutation_type_string . " and Response Time Change";
         } else {
-            $mutation_type_string = "Response Time Change";
+            $mutation_type_string = "Response_Time_Change";
         }
     }
 
