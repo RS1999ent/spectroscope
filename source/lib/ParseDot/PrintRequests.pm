@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.22 2009/09/03 20:20:05 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.23 2009/09/08 23:51:31 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -197,7 +197,7 @@ my $_obtain_graph_edge_latencies = sub {
 #                       the following information: 
 #    edge_name = { REJECT_NULL  => <value>,
 #                 P_VALUE       => <value>,
-#                 AVG_LATENCIES => \@array,
+#                 AVGS => \@array,
 #                 STDDEVS       => \@array}
 #
 # The edge name must be constructed as"source_node_name->dest_node_name"
@@ -251,8 +251,8 @@ my $_overlay_request_info = sub {
                     my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
                                                  $color, 
                                                  $edge_info_hash->{$key}->{P_VALUE}, 
-                                                 int($edge_info_hash->{$key}->{AVG_LATENCIES}->[0] + .5),
-                                                 int($edge_info_hash->{$key}->{AVG_LATENCIES}->[1] + .5),
+                                                 int($edge_info_hash->{$key}->{AVGS}->[0] + .5),
+                                                 int($edge_info_hash->{$key}->{AVGS}->[1] + .5),
                                                  int($edge_info_hash->{$key}->{STDDEVS}->[0] + .5),
                                                  int($edge_info_hash->{$key}->{STDDEVS}->[1] + .5));
                     
@@ -287,7 +287,7 @@ my $_overlay_request_info = sub {
 #    the hash that this reference points should be: 
 #    { REJECT_NULL => <0 or 1>
 #      P_VALUE => <integer>
-#      AVG_LATENCIES => ref to an array denoting avg. latencies from s0, s1
+#      AVGS => ref to an array denoting avg. latencies from s0, s1
 #      STDDEVS => ref to an array denoting std. devs from s0, s1
 #    }
 # @param cluster_likelihood_array_ref: Information about the likelihood of this
@@ -338,8 +338,8 @@ sub create_summary_node {
     # Add Response-time information
     $summary_node = $summary_node . 
         sprintf("Avg. response times: %d us ; %d us\\n",
-                int($response_time_stats->{AVG_LATENCIES}->[0] + .5),
-                int($response_time_stats->{AVG_LATENCIES}->[1] + .5));
+                int($response_time_stats->{AVGS}->[0] + .5),
+                int($response_time_stats->{AVGS}->[1] + .5));
 
     # Add Standard-deviation information
     $summary_node = $summary_node .

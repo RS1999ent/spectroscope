@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.10 2009/08/20 22:09:39 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.11 2009/09/27 19:45:20 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -60,11 +60,6 @@ my $g_pass_through = 0;
 # then the cluster is considered a structural mutation.  If it is less than
 # 1/this value value, then it is considered an originating cluster.
 my $g_interesting_sensitivity = 2;
-
-
-# Whether or not structural mutations should be copied to all clusters
-# or just hte originators
-my $g_originators;
 
 # The module for converting requests into MATLAB compatible format
 # for use in the clustering algorithm
@@ -168,7 +163,7 @@ my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_outp
                                                             $g_interesting_sensitivity);
 
 print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_ranked_clusters($g_originators);
+$g_parse_clustering_results->print_ranked_clusters();
 
    
 
@@ -186,14 +181,12 @@ sub parse_options {
 			   "k_interval=i",             => \$g_clustering_params{K_INTERVAL},
 			   "best_only+"                => \$g_clustering_params{BEST_ONLY},
 			   "pass_through+"             => \$g_pass_through,
-               "originators=s"             => \$g_originators,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
                "interesting_sensitivity:i" => \$g_interesting_sensitivity,
                "bypass_sed+"               => \$g_bypass_sed);
 
     # These parameters must be specified by the user
-    if (!defined $g_output_dir || !defined $g_snapshot0_files[0] ||
-       !defined $g_originators) {
+    if (!defined $g_output_dir || !defined $g_snapshot0_files[0]) {
         print_usage();
         exit(-1);
     }
@@ -220,7 +213,6 @@ sub print_usage {
 		"\t--max_k, --k_interval, --best_only --pass_through --dont_reconvert_reqs\n"; 
     print "\n";
     print "\t--output_dir: The directory in which output should be placed\n";
-    print "\t--originators: Either \"all\" or \"originating_only\"\n";
     print "\t--snapshot0: The name(s) of the dot graph output containing requests from\n" .
         "\t the non-problem snapshot(s).  Up to 10 non-problem snapshots can be specified\n";
 	print "\t--snapshot1: The name(s) of the dot graph output containing requests from\n" . 
@@ -236,6 +228,7 @@ sub print_usage {
 	print "\t--pass_through: Skips the clustering step (OPTIONAL)\n";
     print "\t--interesting_sensitivity: Sensitivity threshold for a cluster\n" .
         "\t being classified a structural mutation, or an originating cluster\n";
+    print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
 }
 
 
