@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.23 2009/09/08 23:51:31 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.24 2009/10/08 09:34:39 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -283,7 +283,8 @@ my $_overlay_request_info = sub {
 # Given key information about a cluster, this function returns a
 # "summary node" in DOT format that contains this information
 #
-# @param response_time_stats_ref: Statistics about the response-time
+# @param cluster_id: The id of the cluster for which to print information
+# @param response_time_stats: Statistics about the response-time
 #    the hash that this reference points should be: 
 #    { REJECT_NULL => <0 or 1>
 #      P_VALUE => <integer>
@@ -294,46 +295,35 @@ my $_overlay_request_info = sub {
 #  cluster in S0 and S1
 # @param frequencies: Information about the frequencies of this this cluster
 #  in s0 and s1
-# @param mutation_type: A string indicating the type of the mutation
-# @param originators_array_ref: (OPTIONAL) A reference to an array 
-#  containing cluster IDs of candidate originating clusters. 
+# @param specific_mutation_type: Information about the specific mutation for which
+#  information is being printed
+# @param mutation_type: Overall mutation types of this cluster
+# @param ranked_originators: A string containing originating clusters
 #
 # @return: A string containing the summary node in DOT format
 ##
 sub create_summary_node {
     
-    assert( scalar(@_) == 5 || scalar(@_) == 6);
-
-    my ($cluster_id, $response_time_stats, 
+    assert( scalar(@_) == 8);
+    
+    my ($cluster_id, $response_time_stats,
         $cluster_likelihood_array_ref, $frequencies_array_ref,
-        $mutation_type, $originators_array_ref);
-
-    if (scalar(@_) == 6) {
-        ($cluster_id, $response_time_stats, 
-         $cluster_likelihood_array_ref, $frequencies_array_ref,
-         $mutation_type, $originators_array_ref) = @_;
-    } else {
-        ($cluster_id, $response_time_stats, 
-         $cluster_likelihood_array_ref, $frequencies_array_ref,
-         $mutation_type) = @_;
-    }
+        $specific_mutation_type, $mutation_type, $cost, $ranked_originators) = @_;
 
     my $summary_node = "1 [fontcolor=\"blue\" shape=\"plaintext\" ";
-
+    
+    print "$cost\n";
     # Add cluster ID and mutation type info
     $summary_node = $summary_node . 
-        sprintf("label=\"Cluster ID: %d\\nMutation Type: %s\\n",
-                $cluster_id, 
-                $mutation_type);
-
+        sprintf("label=\"Cluster ID: %s\\nSpecific Mutation Type: %s\\n" .
+                "Cost: %d\\n" .
+                "Overall Mutation Type: %s\\n",
+                $cluster_id, $specific_mutation_type, $cost, $mutation_type);
+    
     # Add originating cluster information
-    if (defined $originators_array_ref) {
-        $summary_node = $summary_node . sprintf("Candidate originating clusters: ");
-        foreach (@{$originators_array_ref}) {
-            $summary_node = $summary_node . "$_ ";
-        }
-        $summary_node = $summary_node . "\\n";
-    }
+    $summary_node = $summary_node . "Candidate originating clusters: $ranked_originators\\n";
+    
+    $summary_node = $summary_node . "\\n";
 
     # Add Response-time information
     $summary_node = $summary_node . 

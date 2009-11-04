@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.5 2009/09/08 23:51:31 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.6 2009/09/27 04:27:42 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -174,9 +174,10 @@ my $_create_node = sub {
     my ($self, $name) = @_;
     
     my @children_array;
+    my $id = $self->{CURRENT_NODE_ID}++;
     my %node = ( NAME => $name,
                  CHILDREN => \@children_array,
-                 ID => $self->{CURRENT_NODE_ID}++ );
+                 ID => "$self->{PREPEND_ID}" . "$id" );
 
     return \%node;
 };
@@ -204,7 +205,7 @@ my $_print_dot_nodes = sub {
 
 
 ##
-# Helper function for print_dot().  Prints edges
+# Helper function for print_dot().  Print edges
 # of this graph in DOT format to the fd specified
 #
 # @param self: The object container
@@ -265,16 +266,18 @@ $_print_dot_edges = sub {
 # @param req_str: (OPTIONAL) A request in DOT format.  If specified
 #  a structured graph will be created based on this string and finalized
 #  immediately.[
+# @param id: A value that will be prepended to the IDs of every node in
+#  this graph. 
 ##
 sub new {
     
-    assert(scalar(@_) == 1 || scalar(@_) == 2);
+    assert(scalar(@_) == 2 || scalar(@_) == 3);
     
-    my ($proto, $req_str);
-    if (scalar(@_) == 2) {
-        ($proto, $req_str) = @_;
+    my ($proto, $req_str, $id);
+    if (scalar(@_) == 3) {
+        ($proto, $req_str, $id) = @_;
     } else {
-        ($proto) = @_;
+        ($proto, $id) = @_;
     }
 
     my $class = ref($proto) || $proto;
@@ -287,6 +290,7 @@ sub new {
         $self->{EDGE_LATENCIES_HASH} = $container->{EDGE_LATENCIES_HASH};
         $self->{CURRENT_NODE_ID} = 1;
         $self->{FINALIZED} = 1;
+        $self->{PREPEND_ID} = $id;
 
     } else {
         my %graph_structure_hash;
@@ -295,6 +299,7 @@ sub new {
         $self->{EDGE_LATENCIES_HASH} = \%edge_latencies_hash;
         $self->{ROOT} = undef;
         $self->{CURRENT_NODE_ID} = 1;
+        $self->{PREPEND_ID} = $id;
         $self->{FINALIZED} = 0;
     }
 
@@ -324,6 +329,7 @@ sub add_root {
 
     $graph_structure_hash->{$node->{ID}} = $node;
     $self->{ROOT} = $node;
+    assert(defined $node);
     $self->{FINALIZED} = 0;
 
     return $node->{ID};
@@ -463,7 +469,7 @@ sub print_dot {
     assert(scalar(@_) == 2);
     my ($self, $fd) = @_;
 
-    printf $fd "Digraph G {\n";
+    printf $fd "Digraph $self->{PREPEND_ID} {\n";
 
     $self->$_print_dot_nodes($fd);
 

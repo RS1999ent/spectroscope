@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.22 2009/09/29 08:24:53 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.23 2009/10/08 09:34:39 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -381,6 +381,63 @@ my $_compute_cluster_info = sub {
 };
 
 
+## 
+# Extracts clusters that represent just mutations and response-time changes and
+# places them in their own hash ($self->{MUTATION_HASH}.  Clusters that
+# represent both a response-time change and a structural mutation need to be
+# "unrolled."  That is, seperate entries must be created in the mutation hash
+# for the portion of structural mutation cost and for the response-time change
+# cost.
+#
+# @param self: The object container
+# @param use_weighted_cost: 1 if weighted costs should be used for
+#  the cost of structural mutations, 0 otherwise
+##
+my $_create_mutation_hash = sub {
+
+    assert(scalar(@_) == 2);
+    my ($self, $use_weighted_costs) = @_;
+
+    my $cluster_info = $self->{CLUSTER_INFO_HASH};
+
+    # Response-time changes and structural mutations need to be ranked together.
+    # We need to build up a hash that contains seperate elements for clusters that are 
+    # both response-time changes and structural mutations.  We're essentially 
+    # "unrolling" the hash structure.
+    my %mutation_hash;
+    for my $id (keys %{$cluster_info}) {
+
+        my $this_cluster_info = $cluster_info->{$id};
+
+        if(IdentifyMutations::is_structural_mutation($cluster_info, $id)) {
+            my $unrolled_id = $id . "_s";
+
+            my $cost = IdentifyMutations::get_structural_mutation_cost($cluster_info, $id, $use_weighted_costs);            
+            my $originators = IdentifyMutations::get_originators($cluster_info, $id, $use_weighted_costs);
+            $mutation_hash{$unrolled_id} = { CLUSTER => $this_cluster_info,
+                                             COST => $cost,
+                                             MUTATION_TYPE => "Structural mutation",
+                                             ORIGINATORS => $originators,
+                                             ID => $id,
+                                         };
+        }
+        
+        if(IdentifyMutations::is_response_time_change($cluster_info, $id)) {
+            my $unrolled_id = $id . "_r";
+            my $cost = IdentifyMutations::get_response_time_change_cost();
+            $mutation_hash{$unrolled_id} = { CLUSTER => $this_cluster_info,
+                                             COST => $cost,
+                                             MUTATION_TYPE => "Response time change",
+                                             ID => $id
+                                             };
+
+        }
+    }
+
+    return \%mutation_hash;
+};
+
+
 ##
 # Loads the following input files into hashes for use by
 # the other functions in this class: 
@@ -449,20 +506,17 @@ my $_load_files_into_hashes = sub {
 #
 # @param self: The object-container
 # @param cluster_id: The cluster to print
-# @param cluster_info: Aggregate information about this cluster
-#  super-imposed on top of the request
+# @param specific_mutation_type: A string indicating the specific mutation type being considered
+# @param cost: The cost of this specific mutation type
 # @param out_fh: The filehandle to which the graph should be printed
 ##
-
 my $_print_graph = sub {
-    assert(scalar(@_) == 4);
-
-    my $self = shift;
-    my $cluster_id = shift;
-    my $cluster_info = shift;
-    my $out_fh = shift;
+    assert(scalar(@_) == 6);
+    my ($self, $cluster_id, $specific_mutation_type, $cost, $originators, $out_fh) = @_;
 
     my $print_graphs_class = $self->{PRINT_GRAPHS_CLASS};
+    my $cluster_info = $self->{CLUSTER_INFO_HASH}->{$cluster_id};
+
 
     # Get the graph representation of the cluster.  This is the request
     # that corresponds to the first input vector id specified in the
@@ -472,17 +526,19 @@ my $_print_graph = sub {
     my @input_vecs = split(/,/, $cluster_hash->{$cluster_id});
     my @global_ids = split(/,/, $input_vec_to_global_ids_hash->{$input_vecs[0]});
 
-    # Print the graph
+
     my $mutation_type_string = $self->get_mutation_type($cluster_id);
 
     # Create the summary node
     my $summary_node = 
-        PrintRequests::create_summary_node($cluster_info->{ID},
+        PrintRequests::create_summary_node($cluster_id,
                                            $cluster_info->{RESPONSE_TIME_STATS},
                                            $cluster_info->{LIKELIHOODS},
-                                           $cluster_info->{FREQUENCIES},
+                                           $cluster_info->{FREQUENCIES},                             
+                                           $specific_mutation_type,
                                            $mutation_type_string,
-                                           $cluster_info->{MUTATION_INFO}{CANDIDATE_ORIGINATORS});
+                                           $cost,
+                                           $originators);
 
     # Print the graph w/overlay info
     my %overlay_hash = (SUMMARY_NODE => $summary_node,
@@ -492,167 +548,34 @@ my $_print_graph = sub {
                                                          \%overlay_hash);
 };
 
-                              
-#### Private sort routines #######
-
-##
-# Orders the input clusters based on the metric
-#  (num_reqs_from_s0 - num_reqs_in_s1)/total_requests_in_cluster
-# 
-# Clusters are ordered according to the input metric in descending order
-
-# @param $self: The object container
-# @param $a: The first key
-# @param $b: THe second key
-#
-# @return: 
-#  -1: if metric($a) > metric($b)
-#   0: if metric($a) == metric($b)
-#   1: if (metric($a) < metric($b)
-##
-my $_sort_clusters_by_frequency_difference = sub {
-    assert(scalar(@_) == 3);
-
-    my $self = shift;
-    my $a = shift;
-    my $b = shift;
-
-    my $cluster_info_hash = $self->{CLUSTER_INFO_HASH};
-    
-    my $a_frequencies = $cluster_info_hash->{$a}->{FREQUENCIES};
-    my $b_frequencies = $cluster_info_hash->{$b}->{FREQUENCIES};
-    
-    my $a_s0_reqs = $a_frequencies->[0];
-    my $a_s1_reqs = $a_frequencies->[1];
-    my $a_metric = ($a_s1_reqs - $a_s0_reqs)/($a_s0_reqs + $a_s1_reqs);
-    
-    my $b_s0_reqs = $b_frequencies->[0];
-    my $b_s1_reqs = $b_frequencies->[1];
-    my $b_metric = ($b_s1_reqs - $b_s0_reqs)/($b_s0_reqs + $b_s1_reqs);
-    
-    if($b_metric > $a_metric) {
-        return 1;
-    }
-    if($b_metric < $a_metric) {
-        return -1;
-    }
-    if($b_s1_reqs > $a_s1_reqs) {
-        return 1;
-    }
-    
-    return 0;
-};
 
 
 ##
-# Orders the input clusters based on the problem period response time
-# 
-# @param self: The object container
-# @param $a: The first cluster ID
-# @param $b: The second cluster ID
+# Prints all clusters that are neither response-time changes, structural mutations,
+# or originating clusters.  I.e., "Not interesting clusters"
 #
-# @return: 
-#   -1 if metric($a) > metric($b)
-#    0 if metric($a) == metric($b)
-#    1 if metric($a) < metric($b)
+# @param self: The object-container
+# @param output_file: The file to which to print the graphs
 ##
-my $_sort_clusters_by_problem_period_avg_response_time = sub {
-
-    assert(scalar(@_) == 3);
-    my ($self, $a, $b) = @_;
-
-    my $a_response_time_stats= $self->{CLUSTER_INFO_HASH}{$a}{RESPONSE_TIME_STATS};
-    my $b_response_time_stats = $self->{CLUSTER_INFO_HASH}{$b}{RESPONSE_TIME_STATS};
-
-    if($a_response_time_stats->{AVGS}->[1] >
-       $b_response_time_stats->{AVGS}->[1]) {
-
-        return -1;
-
-    } elsif ($a_response_time_stats->{AVGS}->[1] <
-             $b_response_time_stats->{AVGS}->[1]) {
-
-        return 1;
-        
-    } 
-
-    return 0;
-};
-
-
-##
-# Sorts clusters in descending order by the metric:
-#     P(cluster|problem-period(s))/p(cluster|non-problem period(s))
-#
-# @param: $a: The first cluster ID
-# @param: $b: The 2nd cluster ID
-#
-# @return: 
-#   -1 if metric($a) > metric($b)
-#    1 if metric($a) < metric($b)
-#    1 if metric($a) == metric($b)
-##
-my $_sort_clusters_by_probability_factor = sub {
+my $_print_graphs_of_non_interesting_clusters = sub {
     
-    assert(scalar(@_) == 3);
-    my ($self, $a, $b) = @_;
-
-    my $a_probs = $self->{CLUSTER_INFO_HASH}->{$a}->{LIKELIHOODS};
-    my $b_probs = $self->{CLUSTER_INFO_HASH}->{$b}->{LIKELIHOODS};
-
-    my $a_metric = $a_probs->[1]/$a_probs->[0];
-    my $b_metric = $b_probs->[1]/$b_probs->[0];
-
-    if($a_metric > $b_metric) {
-        return -1;
-    }
-    if ($a_metric < $b_metric) {
-        return 1;
-    }
-    
-    # @bug: Since probability factor is equal, should sort by total frequency
-    return 0;
-};
-
-
-## 
-# Wrapper function for ordering clusters according to an input metric
-#
-# @param self: The object container
-# @param metric: Can be any of the following: 
-#     req_difference -- The metric used is:
-#              (problem period(s) freqs - non-problem period(s) freq)
-#               ---------------------------------------------
-#             (problem period(s) frequency + non-problem period(s) freq)
-#     prob_response_time -- The metric used is:
-#             (problem period response time)
-#
-# Clusters are ordered according to the input metric in descending order
-#
-# @return:
-#  -1 if metric($a) > metric($b)
-#   0 if metric($a) == metric($b)
-#   1 if metric($a) < metric($b)
-
-#
-# @return: 1 if $self-{CLUSTER_INFO_HASH}->{$b} is ranked higher than 
-# $self->{CLUSTER_INFO_HASH}->{$a}, 0 if equal, or -1 otherwise
-##
-my $_sort_clusters_wrapper = sub { 
     assert(scalar(@_) == 2);
-    my ($self, $metric) = @_;
+    my ($self, $output_file) = @_;
+    
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
+    open(my $output_fh, ">$output_file");
 
-
-    if ($metric =~ /req_difference/) {
-        $self->$_sort_clusters_by_frequency_difference($a, $b);
-    } elsif($metric =~ /prob_response_time/) {
-        $self->$_sort_clusters_by_problem_period_avg_response_time($a, $b);
-    } elsif($metric =~ /prob_factor/) {
-        $self->$_sort_clusters_by_probability_factor($a, $b);
-    } else {
-        # Nothing else supported now :(
-        assert (0);
+    for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
+        if(IdentifyMutations::is_mutation($cluster_info_hash_ref, $key)) {
+            $self->$_print_graph($key,
+                                 "None",
+                                 0,
+                                 "",
+                                 $output_fh);
+        }
     }
+
+    close($output_fh);
 };
 
 
@@ -660,85 +583,129 @@ my $_sort_clusters_wrapper = sub {
 # Prints all clusters marked as being of type "RESPONSE_TIME_CHANGE"
 #
 # @param self: The object-container
+# @param mutation_hash_ref: Reference to a hash containing all of the 
+# structural mutations and response-time changes and their costs
+# @output_file: The file to which to print the grpahs
 ##
 my $_print_graphs_of_clusters_with_response_time_changes = sub {
 
-    assert(scalar(@_) == 1);
-    my ($self) = @_;
-
-    my $output_file = $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE};
-    my $cluster_info = $self->{CLUSTER_INFO_HASH};
+    assert(scalar(@_) == 3);
+    my ($self, $mutation_hash_ref, $output_file) = @_;
 
     open(my $output_fh, ">$output_file");
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
 
-    for my $key (sort {$self->$_sort_clusters_wrapper("prob_response_time")} keys %{$cluster_info}) {
+    # sort in descending order
+    for my $key (sort {$mutation_hash_ref->{$b}->{COST} <=> $mutation_hash_ref->{$a}->{COST}}
+                 keys %{$mutation_hash_ref}) {
 
-        if(IdentifyMutations::is_response_time_change($cluster_info, $key)) {
-            my $this_cluster_info = $cluster_info->{$key};
-            $self->$_print_graph($key, $this_cluster_info, $output_fh);
+        if ($mutation_hash_ref->{$key}->{MUTATION_TYPE} eq "Response time change") {
+
+            $self->$_print_graph($mutation_hash_ref->{$key}->{ID},
+                                 $mutation_hash_ref->{$key}->{MUTATION_TYPE},
+                                 $mutation_hash_ref->{$key}->{COST},
+                                 "",
+                                 $output_fh);
         }
     }
+    close($output_fh);
 };
 
 
 ##
-# Prints all structural mutations and originating clusters
+# Prints all clusters marked as being of type "STRUCTURAL MUTATION"
 #
 # @param self: The object-container
+# @param mutation_hash_ref: Reference to a hash containing all of the structural
+#  mutations and tehir response-time changes and their costs
+# @param output_file: The file to which to print the graphs
 ##
 my $_print_graphs_of_clusters_with_structural_mutations = sub {
 
-    assert(scalar(@_) == 1);
-    my($self) = @_;
+    assert(scalar(@_) == 3);
+    my($self, $mutation_hash_ref, $output_file) = @_;
 
-    my $mutation_file = $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE};
-    my $originating_file = $self->{ORIGINATING_CLUSTERS_GRAPH_FILE};
-    my $not_interesting_file = $self->{NOT_INTERESTING_GRAPH_FILE};
+    open(my $output_fh, ">$output_file");
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
 
-    my $cluster_info = $self->{CLUSTER_INFO_HASH};
-    my %originating_hash;
+    # sort in descending order
+    for my $key (sort {$mutation_hash_ref->{$b}->{COST} <=> $mutation_hash_ref->{$a}->{COST}}
+                 keys %{$mutation_hash_ref}) {
 
-    open(my $mutation_fh, ">$mutation_file") or 
-        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
-        " $mutation_file.  $!\n";
-    open(my $originating_fh, ">$originating_file") or 
-        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open " .
-        " $originating_file.  $!\n";
-    open(my $not_interesting_fh, ">$not_interesting_file") or
-        die "_print_graphs_of_clusters_with_structural_mutations(): Could not open" .
-        " $not_interesting_file.  $!\n";
+        if($mutation_hash_ref->{$key}->{MUTATION_TYPE} eq "Structural mutation") {
 
-    # Print structural mutations and requests that are not mutated in any way
-    for my $key (sort {$self->$_sort_clusters_wrapper("prob_factor")} keys %{$cluster_info}) {
+            $self->$_print_graph($mutation_hash_ref->{$key}->{ID}, 
+                                 $mutation_hash_ref->{$key}->{MUTATION_TYPE},
+                                 $mutation_hash_ref->{$key}->{COST},
+                                 $mutation_hash_ref->{$key}->{ORIGINATORS},
+                                 $output_fh);
+        }
+    }
+    close ($output_fh);
+};
+
+
+##
+# Prints graphs of all clusters marked as being of type "Structural Mutation"
+# or "Response-time Change."  These mutations are ranked together.
+#
+# @param self: The object container
+# @param mutation_hash_ref: Reference to a hash containing all of the
+#  structural mutations and response-time changes and their costs
+# @param output_file: The file to which to print the graphs
+##
+my $_print_combined_ranked_graphs_of_mutations = sub {
+
+    assert(scalar(@_) == 3);
+    my ($self, $mutation_hash_ref, $output_file) = @_;
+
+    open(my $output_fh, ">$output_file");
+    my $cluster_info_hash_ref =$self->{CLUSTER_INFO_HASH};
+
+    for my $key (sort {$mutation_hash_ref->{$b}->{COST} <=> $mutation_hash_ref->{$a}->{COST}}
+                 keys %{$mutation_hash_ref}) {
+
+        my $originators = (defined $mutation_hash_ref->{$key}->{ORIGINATORS})? 
+            $mutation_hash_ref->{$key}->{ORIGINATORS}: "";
+
+        $self->$_print_graph($mutation_hash_ref->{$key}->{ID},
+                             $mutation_hash_ref->{$key}->{MUTATION_TYPE},
+                             $mutation_hash_ref->{$key}->{COST},
+                             $originators,
+                             $output_fh);
+    }
+
+    close ($output_fh);
+};
+
+
+## 
+# Prints graphs of all clusters marked as being of type "Originating Cluster"
+#
+# @param self: The object container
+# @param output_file: The file to which ot print the graphs
+##
+my $_print_graphs_of_originating_clusters = sub {
+
+    assert(scalar(@_) == 2);
+    my ($self, $output_file) = @_;
+
+    open(my $output_fh, ">$output_file");
+    my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
+
+    for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
         
-        my $this_cluster_info = $cluster_info->{$key};
-        my $mutation_info = $this_cluster_info->{MUTATION_INFO};
-
-        if(IdentifyMutations::is_structural_mutation($cluster_info, $key)) {
-            $self->$_print_graph($key, $this_cluster_info, $mutation_fh);
-            my $candidate_originators = $mutation_info->{CANDIDATE_ORIGINATORS};
-            
-            foreach(@{$candidate_originators}) {
-                if(!defined $originating_hash{$_}) {
-                    $originating_hash{$_} = 1;
-                }
-            }
-            
-        } elsif(IdentifyMutations::is_mutation($cluster_info, $key) == 0) {
-            $self->$_print_graph($key, $this_cluster_info, $not_interesting_fh);
+        if(IdentifyMutations::is_originating_cluster($cluster_info_hash_ref,
+                                                     $key)) {
+            $self->$_print_graph($key,
+                                 "Originating cluster",
+                                 0,
+                                 "",
+                                 $output_fh);
         }
     }
 
-    # Print originating clusters
-    for my $key (sort {$a <=> $b} keys %originating_hash) {
-        my $this_cluster_info = $cluster_info->{$key};
-        $self->$_print_graph($key, $this_cluster_info, $originating_fh);
-    }
-
-    # Close output files
-    close($mutation_fh);
-    close ($originating_fh);
-    close ($not_interesting_fh);
+    close($output_fh);
 };
 
 
@@ -764,30 +731,30 @@ my $_print_all_clusters = sub {
     printf $out_fh "%-15s\t%-40s\t%-20s\t%-20s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\n",
     "cluster_id", "mutation_type", "s0_likelh", "s1_likelh", "s0_avg_lat", 
     "s1_avg_lat", "s0_stddev", "s1_stddev", "s0_freq", "s1_freq";
-
+    
     for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
-
+        
         my $this_cluster_hash_ref = $cluster_info_hash_ref->{$key};
-
+        
         my $likelihoods = $this_cluster_hash_ref->{LIKELIHOODS};
         my $mutation_type_string  = $self->get_mutation_type($key);        
         my $response_time_stats = $this_cluster_hash_ref->{RESPONSE_TIME_STATS};
         my $freqs = $this_cluster_hash_ref->{FREQUENCIES};
-
+        
         printf $out_fh "%-15d\t%-40s\t%-1.14f\t%-1.14f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\n",
         $key, $mutation_type_string, $likelihoods->[0], $likelihoods->[1], 
         $response_time_stats->{AVGS}->[0], $response_time_stats->{AVGS}->[1],
         $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[1],
         $freqs->[0], $freqs->[1];
-
+        
         # Collect some aggregate statistics
         $likelihood_diff += $likelihoods->[1] - $likelihoods->[0];
     }
 
     close($out_fh);
 };
-    
-        
+
+
 #### API functions ################
 
 ##
@@ -853,12 +820,19 @@ sub new {
 
     # Some derived outputs
     $self->{BOXPLOT_OUTPUT_DIR} = "$output_dir/boxplots";
+
     $self->{INTERIM_OUTPUT_DIR} = "$output_dir/interim_cluster_data";
-    $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/response_time_changes.dot";
-    $self->{STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/structural_mutations.dot";
+
     $self->{ORIGINATING_CLUSTERS_GRAPH_FILE} = "$output_dir/originating_clusters.dot";
     $self->{NOT_INTERESTING_GRAPH_FILE} = "$output_dir/not_interesting_clusters.dot";
     $self->{CLUSTER_INFO_TEXT_FILE} = "$output_dir/cluster_info.dat";
+    $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/weighted_response_time_changes.dot";
+
+    $self->{UNWEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/unweighted_structural_mutations.dot";
+    $self->{UNWEIGHTED_COMBINED_GRAPH_FILE} = "$output_dir/unweighted_combined_ranked_graphs.dot";
+
+    $self->{WEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/weighted_structural_mutations.dot";
+    $self->{WEIGHTED_COMBINED_GRAPH_FILE} = "$output_dir/weighted_combined_ranked_graphs.dot";
 
     # Create the interim output directory
     system("mkdir -p $self->{INTERIM_OUTPUT_DIR}") == 0 or 
@@ -910,9 +884,30 @@ sub print_ranked_clusters {
         $self->$_compute_cluster_info();
     }
 
-    $self->$_print_graphs_of_clusters_with_response_time_changes();
-    $self->$_print_graphs_of_clusters_with_structural_mutations();
+    my $unweighted_mutation_hash = 
+        $self->$_create_mutation_hash(0);
+    my $weighted_mutation_hash = 
+        $self->$_create_mutation_hash(1);
+
+    # First print graphs of originators and information
+    # all of the clusters
     $self->$_print_all_clusters();
+    $self->$_print_graphs_of_originating_clusters($self->{ORIGINATING_CLUSTERS_GRAPH_FILE});
+    $self->$_print_graphs_of_non_interesting_clusters($self->{NOT_INTERESTING_GRAPH_FILE});
+    $self->$_print_graphs_of_clusters_with_response_time_changes($unweighted_mutation_hash,
+                                                                 $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE});
+    # Print ranked graphs w/o weights        
+    $self->$_print_graphs_of_clusters_with_structural_mutations($unweighted_mutation_hash,
+                                                                $self->{UNWEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE});
+    $self->$_print_combined_ranked_graphs_of_mutations($unweighted_mutation_hash,
+                                                       $self->{UNWEIGHTED_COMBINED_GRAPH_FILE});
+
+
+    # Print graphs w/weights
+    $self->$_print_graphs_of_clusters_with_structural_mutations($weighted_mutation_hash,
+                                                                $self->{WEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE});
+    $self->$_print_combined_ranked_graphs_of_mutations($weighted_mutation_hash,
+                                                       $self->{WEIGHTED_COMBINED_GRAPH_FILE});
 }
 
 
@@ -1080,6 +1075,7 @@ sub get_mutation_type {
     
     IdentifyMutations::get_mutation_type($cluster_info_hash_ref, $cluster_id);
 }
+
 
 
 1;    

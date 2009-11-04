@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: get_path_shape_statistics.pl,v 1.1 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: get_path_shape_statistics.pl,v 1.2 2009/07/28 20:22:51 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -142,7 +142,7 @@ sub create_parse_clustering_results_obj {
         $pass_through->do_output_files_exist() == 0) {
         
         $parse_requests->parse_requests();
-        $clustering_input->create_clustering_input();
+        $clustering_input->create_clustering_input(1);
         $pass_through->cluster();
     }
 
@@ -154,7 +154,7 @@ sub create_parse_clustering_results_obj {
                                            \@g_graph_files_ref);
     my $parse_clustering_results = new ParseClusteringResults($g_convert_reqs_dir,
                                                               $print_requests,
-                                                              $g_temp_output_dir);
+                                                              $g_temp_output_dir, 2);
     undef $print_requests;
     
     return $parse_clustering_results;

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: refactor_path.pl,v 1.2 2009/09/08 01:24:48 rajas Exp $v
+# $cmuPDL: refactor_path.pl,v 1.3 2009/09/11 06:19:20 rajas Exp $v
 
 ##
 # Given a critical path, this function 'refactors' all the contiguous nodes that
@@ -21,7 +21,7 @@ no warnings 'recursion';
 
 ##### Global variables ####
 
-my $refactorable_components;
+my @refactorable_components;
 
 
 ##### Functions ########
@@ -43,14 +43,12 @@ sub parse_options {
     
     my @tmp;
     
-    GetOptions("refactor=s{1,10}" => \@tmp);
+    GetOptions("refactor=s{1,10}" => \@refactorable_components);
     
-    if(!defined $tmp[0]) {
+    if(!defined $refactorable_components[0]) {
         print_usage();
         exit(-1);
     }
-    
-    $refactorable_components = join(' ', @tmp);
 }
 
 ##
@@ -64,12 +62,12 @@ sub is_refactorable {
     
     assert( scalar(@_) == 1);
     my ($component) = @_;
-    
-    if ($refactorable_components =~ /$component/) {
-        return 1;
+
+    foreach (@refactorable_components) {
+        if($component eq $_) {
+            return 1;
+        }
     }
-    
-    return 0;
 }
 
 
@@ -129,16 +127,9 @@ sub refactor_graph {
     # Case 1: refactored_req_info's root is undefined.  Create root and
     # and recursively call this fn on $orig_req_info->{DEST_ID}'s children
     if (!defined $refactored_req_info->{ID}) {
-        my $root;
-
-        if (is_refactorable($comp)) {
-            # Case 1A: Root node of original request is refactorable
-            $new_refactored_node_id = $refactored_graph->add_root("$comp" . "__START");
-        } else {
-            # Case 1B: Root node of original request is refactorable
-            my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
-            $new_refactored_node_id = $refactored_graph->add_root($name);
-        }
+        # Case 1B: Root node of original request is refactorable
+        my $name = $orig_graph->get_node_name($orig_req_info->{DEST_ID});
+        $new_refactored_node_id = $refactored_graph->add_root($name);
 
         $new_accum_latency = 0;
 
@@ -238,9 +229,11 @@ parse_options();
 my $old_seperator = $/;
 $/ = '}';    
 
+my $count = 0;
+
 while (<STDIN>) {
     my $dot_request = $_;
-
+    
     my $header;
     if ($dot_request =~ /(\# .*)\n/)  {
         $header = $1;
@@ -249,12 +242,15 @@ while (<STDIN>) {
     }
     assert (defined $header);
 
-    my $orig_req_graph = new StructuredGraph($dot_request);
+    print STDERR "Processing new request\n";
+    $count++;
+
+    my $orig_req_graph = new StructuredGraph($dot_request, 0);
     my %orig_req_info = ( SRC_ID => undef,
                           GRAPH => $orig_req_graph,
                           DEST_ID => $orig_req_graph->get_root_node_id());
 
-    my $refactored_req_graph = new StructuredGraph();
+    my $refactored_req_graph = new StructuredGraph($count);
     my %refactored_req_info = ( ID => undef,
                                 GRAPH => $refactored_req_graph);
     my %traversed;
@@ -264,6 +260,7 @@ while (<STDIN>) {
     print "$header\n";
     $refactored_req_graph->print_dot(\*STDOUT);
     print "\n";
+
 }
 
 
