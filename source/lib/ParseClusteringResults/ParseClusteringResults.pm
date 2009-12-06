@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.23 2009/10/08 09:34:39 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.24 2009/11/04 02:04:19 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -430,6 +430,7 @@ my $_create_mutation_hash = sub {
                                              MUTATION_TYPE => "Response time change",
                                              ID => $id
                                              };
+            
 
         }
     }
@@ -658,9 +659,9 @@ my $_print_combined_ranked_graphs_of_mutations = sub {
 
     assert(scalar(@_) == 3);
     my ($self, $mutation_hash_ref, $output_file) = @_;
-
-    open(my $output_fh, ">$output_file");
+    
     my $cluster_info_hash_ref =$self->{CLUSTER_INFO_HASH};
+    open(my $output_fh, ">$output_file");
 
     for my $key (sort {$mutation_hash_ref->{$b}->{COST} <=> $mutation_hash_ref->{$a}->{COST}}
                  keys %{$mutation_hash_ref}) {
@@ -702,7 +703,12 @@ my $_print_graphs_of_originating_clusters = sub {
                                  0,
                                  "",
                                  $output_fh);
+
+            my $this_cluster_info = $cluster_info_hash_ref->{$key};
+
         }
+
+        
     }
 
     close($output_fh);
@@ -749,6 +755,7 @@ my $_print_all_clusters = sub {
         
         # Collect some aggregate statistics
         $likelihood_diff += $likelihoods->[1] - $likelihoods->[0];
+
     }
 
     close($out_fh);

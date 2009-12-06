@@ -164,11 +164,11 @@ sub identify_originators_and_cost {
                 }
 
                 # Enforce 1-N relationship explicitly
-                if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
-                    print "$o_id cannot be an originating cluster of $m_id\n" .
-                        "\t $m_id has increased in freq more than $o_id has decreased\n";
-                    next;
-                }
+                #if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
+                #    print "$o_id cannot be an originating cluster of $m_id\n" .
+                #        "\t $m_id has increased in freq more than $o_id has decreased\n";
+                #    next;
+                #}
 
                 $weight = 1/$sed_obj->get_sed($m_id, $o_id);
                 $total_weight += $weight;
@@ -198,7 +198,8 @@ sub identify_originators_and_cost {
             my $response_time_change = $mutation->{RESPONSE_TIME_STATS}->{AVGS}->[1] - 
                                         $mutation->{RESPONSE_TIME_STATS}->{AVGS}->[0];
             my $cost = $mutation->{FREQUENCIES}->[0]*($response_time_change);
-            $mutation_info->{DETAILS} = {COST => $cost};
+            my $mutation_info->{DETAILS}{RESPONSE_TIME_COST} = $cost;
+            
         }
     }
 }
@@ -255,8 +256,14 @@ sub calculate_structural_mutation_error {
 
     my $total_cost = $total_mutation_cost - $total_originator_cost;
 
-    my $unweighted_error = abs($total_cost - $unweighted_expected_cost)/$total_cost;
-    my $weighted_error = abs($total_cost - $weighted_expected_cost)/$total_cost;
+    my $unweighted_error = 0;
+    my $weighted_error = 0;
+
+    if($total_cost != 0) { 
+        $unweighted_error = abs($total_cost - $unweighted_expected_cost)/$total_cost;
+        $weighted_error = abs($total_cost - $weighted_expected_cost)/$total_cost;
+    }
+        
 
     print "Total cost of structural mutations: $total_cost\n";
     print "Expected cost of structural mutations (unweighted): $unweighted_expected_cost ($unweighted_error)\n";
@@ -548,9 +555,9 @@ sub get_response_time_change_cost {
     my $mutation_info = $this_cluster_info->{MUTATION_INFO};
 
     assert(($mutation_info->{MUTATION_TYPE} & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE);
-    assert(defined $mutation_info->{DETAILS}->{COST});
+    assert(defined $mutation_info->{DETAILS}->{RESPONSE_TIME_COST});
 
-    return $mutation_info->{DETAILS}->{COST};
+    return $mutation_info->{DETAILS}->{RESPONSE_TIME_COST};
 }
 
 

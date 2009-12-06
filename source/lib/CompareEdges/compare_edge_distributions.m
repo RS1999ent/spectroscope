@@ -1,4 +1,4 @@
-% $cmuPDL: compare_edge_distributions.pm,v 1.64 2009/03/13 19:39:19 source Exp $
+% $cmuPDL: compare_edge_distributions.m,v 1.2 2009/04/26 23:48:44 source Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edges passed into it and returns whether they are the same.  The
@@ -53,7 +53,7 @@
         % when the following condition is false.
         e = 0.0001;
         if(s0_size*s1_size/(s0_size + s1_size + e) < 4) 
-            continue;
+     %continue;
         end
 
         [h, p] = kstest2(s0_edge_latencies, s1_edge_latencies);
