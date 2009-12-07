@@ -198,7 +198,7 @@ sub identify_originators_and_cost {
             my $response_time_change = $mutation->{RESPONSE_TIME_STATS}->{AVGS}->[1] - 
                                         $mutation->{RESPONSE_TIME_STATS}->{AVGS}->[0];
             my $cost = $mutation->{FREQUENCIES}->[0]*($response_time_change);
-            my $mutation_info->{DETAILS}{RESPONSE_TIME_COST} = $cost;
+            $mutation_info->{DETAILS}->{RESPONSE_TIME_COST} = $cost;
             
         }
     }

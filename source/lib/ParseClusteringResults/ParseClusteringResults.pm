@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.24 2009/11/04 02:04:19 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.25 2009/12/06 12:45:04 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -424,7 +424,7 @@ my $_create_mutation_hash = sub {
         
         if(IdentifyMutations::is_response_time_change($cluster_info, $id)) {
             my $unrolled_id = $id . "_r";
-            my $cost = IdentifyMutations::get_response_time_change_cost();
+            my $cost = IdentifyMutations::get_response_time_change_cost($cluster_info, $id);
             $mutation_hash{$unrolled_id} = { CLUSTER => $this_cluster_info,
                                              COST => $cost,
                                              MUTATION_TYPE => "Response time change",
