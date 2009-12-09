@@ -41,12 +41,14 @@ while(<STDIN>) {
         $reply_type_entities{$1}++;
     }
 
-    if(eq_deeply(\%call_type_entities, \%reply_type_entities) == 0) {        
-        if ($extract_malformed) {
-            print "$request";            
+    if (scalar %call_type_entities || scalar %reply_type_entities) {
+        if (eq_deeply(\%call_type_entities, \%reply_type_entities) == 0) {        
+            if ($extract_malformed) {
+                print "$request\n";            
+            }
+        } elsif ($extract_malformed == 0) {
+            print "$request\n";
         }
-    } elsif ($extract_malformed == 0) {
-        print "$request";
     }
 }
 
