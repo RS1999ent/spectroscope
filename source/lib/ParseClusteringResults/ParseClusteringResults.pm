@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.25 2009/12/06 12:45:04 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.26 2009/12/07 03:12:01 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -374,7 +374,7 @@ my $_compute_cluster_info = sub {
     }
 
     IdentifyMutations::identify_mutations(\%cluster_info_hash, $self->{SED_CLASS}, 
-                                          $self->{INTERESTING_SENSITIVITY});
+                                          $self->{INTERIM_OUTPUT_DIR});
      
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
 

@@ -58,7 +58,9 @@ sub new {
 
     $self->{REF_DISTRIB_FILE} = $ref_file;
     $self->{TEST_DISTRIB_FILE} = $test_file;
-    $self->{OUTPUT_FILE} = "$output_dir/name_hypothesis_test_results.dat";
+    $self->{OUTPUT_FILE} = "$output_dir/$name" . "_hypothesis_test_results.dat";
+    $self->{REF_GRAPH_FILE} = "$output_dir/$name" . "_ref_distrib_graph.eps";
+    $self->{TEST_GRAPH_FILE} = "$output_dir/$name" . "_test_distribu_graph.eps";
     $self->{HAVE_TESTS_BEEN_RUN} = 0;
 
     bless($self, $class);
@@ -93,6 +95,31 @@ sub run_kstest2 {
            "|| matlab -nodisplay -r \"compare_edges(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\'); quit\"") == 0
            or die ("Could not run Matlab compare_edges script\n");
 
+    chdir $curr_dir;
+
+    $self->{HAVE_TESTS_BEEN_RUN} = 1;
+}
+
+
+##
+# Runs the X^2 test.  Input data should be categorical and in each row of the input
+# files should be in the following format.
+#   id count name
+# id is the id of the category; count is the number of elements contained; name is
+# a field that is used to combine multiple categories if each does not contain enough elements.
+# Categories with the same name are assumed to be comparable.
+##
+sub run_chi_squared {
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    my $curr_dir = getcwd();
+    chdir '../lib/StatisticalTests';
+
+    system("matlab -nojvm -nosplash -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\', \'$self->{REF_GRAPH_FILE}\', \'$self->{TEST_GRAPH_FILE}\'); quit\"".
+           "|| matlab -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\', \'$self->{REF_GRAPH_FILE}\', \'$self->{TEST_GRAPH_FILE}\'); quit\"") == 0
+           or die("Could not run Matlab compare_categories script\n");
+    
     chdir $curr_dir;
 
     $self->{HAVE_TESTS_BEEN_RUN} = 1;
@@ -136,7 +163,7 @@ sub get_hypothesis_test_results {
 
     while (<$hyp_test_results_fh>) {
         # This regexp must match the output specified by _run_hypothesis_test()
-        if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+) ([0-9\.]+)/) {
+        if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+)/) {
             my $edge_row_num = $1;
             my $reject_null = $2;
             my $p_value = $3;

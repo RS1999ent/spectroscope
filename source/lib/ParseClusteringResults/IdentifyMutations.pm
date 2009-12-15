@@ -13,6 +13,8 @@ use Test::Harness::Assert;
 #use ParseClusteringResults::CreateHypothesisTestInputs
 #    qw[create_graph_structure_comparison_files];
 
+use Data::Dumper;
+
 our @EXPORT_OK = qw(identify_mutations get_mutation_type
                     is_response_time_change is_structural_mutation
                     is_originating_cluster is_mutation
@@ -49,6 +51,8 @@ my $RESPONSE_TIME_MASK = 0x100;
 # 
 # @param this_cluster_info_hash_ref: A reference to hash containing statistics
 #  about the cluster for which we are determining the mutation type
+# @param structural_mutations_exist: Whether or not structural mutations have
+#  been identified to exist for this dataset.
 # @param sensitivity: The threshold factor increase or decrease in requests
 # belonging to a cluster that will force this function to mark it as a
 # structural mutation or originating cluster
@@ -58,23 +62,25 @@ my $RESPONSE_TIME_MASK = 0x100;
 sub find_mutation_type  {
 
     assert(scalar(@_) == 2);
-    my ($this_cluster_info_hash_ref, $sensitivity) = @_;
+    my ($this_cluster_info_hash_ref, $structural_mutations_exist) = @_;
     
     my $snapshot_freqs = $this_cluster_info_hash_ref->{FREQUENCIES};
     my $mutation_type = $NO_MUTATION;
 
     # Identify structural mutations and originating clusters
-    if($snapshot_freqs->[1] > 1) {
-        if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
-            $mutation_type = $STRUCTURAL_MUTATION;
+    if($structural_mutations_exist) {
+        if($snapshot_freqs->[1] > 1) {
+            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
+                $mutation_type = $STRUCTURAL_MUTATION;
+            }
+        }
+        if ($snapshot_freqs->[0] > 1) {
+            if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
+                $mutation_type = $ORIGINATING_CLUSTER;
+            }
         }
     }
-    if ($snapshot_freqs->[0] > 1) {
-        if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
-            $mutation_type = $ORIGINATING_CLUSTER;
-        }
-    }
-    
+
     # Identify response-time mutations
     my $hypothesis_test_results = $this_cluster_info_hash_ref->{RESPONSE_TIME_STATS};
     if ($hypothesis_test_results->{REJECT_NULL} == 1) {
@@ -271,6 +277,42 @@ sub calculate_structural_mutation_error {
 }
 
 
+##
+# Runs a X^2 hypothesis test to determine if structural mutations exist
+#
+# @param cluster_info_hash_ref: Information about each cluster
+# @param output_dir: Input files created by this function for use by
+#  MATLAB will be placed in this directory
+# 
+# @return: 1 if structural mutations exist, 0 otherwise.
+##
+sub determine_if_structural_mutations_exist {
+
+    assert(scalar(@_) == 2);
+    my ($cluster_info_hash_ref, $output_dir) = @_;
+
+    my $s0_cluster_frequencies_file = "$output_dir/s0_cluster_frequencies.dat";
+    my $s1_cluster_frequencies_file = "$output_dir/s1_cluster_frequencies.dat";
+    
+    CreateHypothesisTestInputs::create_cluster_frequency_comparison_files($cluster_info_hash_ref,
+                                                                          $s0_cluster_frequencies_file,
+                                                                          $s1_cluster_frequencies_file);
+
+    # Run hypothesis test
+    my $test = new HypothesisTest($s0_cluster_frequencies_file,
+                                  $s1_cluster_frequencies_file,
+                                  "category_count_comparisons",
+                                  $output_dir);
+
+    $test->run_chi_squared();
+
+    print "Determining if structural mutations exist\n";
+    my $results = $test->get_hypothesis_test_results();
+    print Dumper($results);
+
+    return $results->{1}->{REJECT_NULL};
+}
+
 #### Public functions ############
 
 
@@ -288,8 +330,8 @@ sub calculate_structural_mutation_error {
 #                                      RESPONSE_TIME_STATS => \%hash_ref
 #                                      EDGE_LATENCY_STATS => \%hash_ref}
 # @param sed: A object that allows querying of the "distance" between clusters
-# @param sensitivity: The threshold factor at which requests will be marked
-# as structural mutations or originating clusters
+# @param output_dir: The output directory in which to write data files created
+#  while identifying mutations
 #
 #
 # @return: 
@@ -306,14 +348,17 @@ sub calculate_structural_mutation_error {
 sub identify_mutations {
     
     assert(scalar(@_) == 3);
-    my ($cluster_info_hash_ref, $sed, $sensitivity) = @_;
+    my ($cluster_info_hash_ref, $sed, $output_dir) = @_;
     
     # Run Chi-Squared test here to tell if we should label *anything* as a structural mutation
-    
+    my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
+                                                                             $output_dir);
+
     # Identify mutation types
     for my $key (keys %{$cluster_info_hash_ref}) {
         my %mutation_info;
-        $mutation_info{MUTATION_TYPE} = find_mutation_type($cluster_info_hash_ref->{$key}, $sensitivity);
+        $mutation_info{MUTATION_TYPE} = find_mutation_type($cluster_info_hash_ref->{$key}, 
+                                                           $structural_mutations_exist);
         $cluster_info_hash_ref->{$key}->{MUTATION_INFO} = \%mutation_info;
     }
 

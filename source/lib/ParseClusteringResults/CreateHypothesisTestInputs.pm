@@ -15,6 +15,8 @@ use warnings;
 use Test::Harness::Assert;
 use diagnostics;
 use List::Util qw[max];
+use Data::Dumper;
+
 require Exporter;
 our @EXPORT_OK = qw(create_response_time_comparison_files create_edge_latency_comparison_files);
 
@@ -182,5 +184,46 @@ sub create_response_time_comparison_files {
     close($fh);
 }
 
+
+##
+# Creates hypothesis test input files for comparing counts of the number of
+# requests assigned to each cluster between the problem and non-problem period.
+# 
+# @param cluster_info_hash_ref: Information about each cluster
+# @param s0_cluster_frequencies_file: Name of input file to create for s0
+# @param s1_cluster_frequencies_file: Name of input file to create for s1
+##
+sub create_cluster_frequency_comparison_files {
+
+    assert(scalar(@_) == 3);
+    my ($cluster_info_hash_ref,
+        $s0_cluster_frequencies_file, 
+        $s1_cluster_frequencies_file) = @_;
+    
+           
+    open (my $s0_fh, ">$s0_cluster_frequencies_file")
+        or die ("create_cluster_frequency_comparison_files(): Could not open "
+                . "$s0_cluster_frequencies_file");
+
+    open (my $s1_fh, ">$s1_cluster_frequencies_file")
+        or die ("create_cluster_frequency_comparison_files(): Could not open "
+                . "$s1_cluster_frequencies_file");
+
+    foreach my $id (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
+        printf $s0_fh "%d %d %s\n",
+        $id, 
+        $cluster_info_hash_ref->{$id}->{FREQUENCIES}->[0],
+        $cluster_info_hash_ref->{$id}->{ROOT_NODE};
+
+        printf $s1_fh "%d %d %s\n",
+        $id, 
+        $cluster_info_hash_ref->{$id}->{FREQUENCIES}->[1],
+        $cluster_info_hash_ref->{$id}->{ROOT_NODE};
+    }
+        
+    close($s0_fh);
+    close($s1_fh);
+}
+    
 
 1;
