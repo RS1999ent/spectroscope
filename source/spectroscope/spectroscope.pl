@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.11 2009/09/27 19:45:20 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.12 2009/10/08 09:34:39 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -55,11 +55,6 @@ my $g_reconvert_reqs = 0;
 # Allow user to "skip" clustering and simply group requests by
 # structure
 my $g_pass_through = 0;
-
-# If p(cluster|problem)/p(cluster|non-problem) is greater than this value
-# then the cluster is considered a structural mutation.  If it is less than
-# 1/this value value, then it is considered an originating cluster.
-my $g_interesting_sensitivity = 2;
 
 # The module for converting requests into MATLAB compatible format
 # for use in the clustering algorithm
@@ -159,8 +154,8 @@ my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
 
 my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
                                                             $g_print_requests,
-                                                            $g_output_dir,
-                                                            $g_interesting_sensitivity);
+                                                            $g_output_dir);
+
 
 print "Initializng parse clustering results\n";
 $g_parse_clustering_results->print_ranked_clusters();
@@ -182,7 +177,6 @@ sub parse_options {
 			   "best_only+"                => \$g_clustering_params{BEST_ONLY},
 			   "pass_through+"             => \$g_pass_through,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
-               "interesting_sensitivity:i" => \$g_interesting_sensitivity,
                "bypass_sed+"               => \$g_bypass_sed);
 
     # These parameters must be specified by the user
@@ -226,8 +220,6 @@ sub print_usage {
     print "\t--reconvert_reqs: Re-indexes and reconverts requests for\n" .
           "\t fast access and MATLAB input (OPTIONAL)\n";
 	print "\t--pass_through: Skips the clustering step (OPTIONAL)\n";
-    print "\t--interesting_sensitivity: Sensitivity threshold for a cluster\n" .
-        "\t being classified a structural mutation, or an originating cluster\n";
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
 }
 
