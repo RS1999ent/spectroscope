@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.26 2009/12/07 03:12:01 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.27 2009/12/15 00:03:09 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -792,11 +792,10 @@ my $_print_all_clusters = sub {
 ##
 sub new {
 
-    assert(scalar(@_) == 5);
+    assert(scalar(@_) == 4);
 
     my ($proto, $convert_data_dir, 
-        $print_graphs_class, $output_dir, 
-        $interesting_sensitivity) = @_;
+        $print_graphs_class, $output_dir) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
@@ -806,7 +805,6 @@ sub new {
     $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE} = "$convert_data_dir/input_vec_to_global_ids.dat",;
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
-    $self->{INTERESTING_SENSITIVITY} = $interesting_sensitivity;
 
     # @bug: Abstraction violation, this class should not know that
     # the clusters are the same as the input vector
