@@ -7,31 +7,22 @@
 % output_file: File to which hypothesis test result should be written
 % stats_file: Information about the raw category counts and counts after
 % merging will be written here
-% s0_cdf_file: A graph of the CDF of category counts for the s0 dataset
-% s1_cdf_file: A grph of the CDF of category counts for the s1 dataset
 %%
-function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, output_file, stats_file, s0_cdf_file, s1_cdf_file)
+function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, output_file, stats_file)
 
+    if nargin ~= 5
+        error('Invalid number of parameters');
+    end
+    
     [s0_ids, s0_counts, names] = textread(s0_counts_file, '%d %d %s');
     [s1_ids, s1_counts, names] = textread(s1_counts_file, '%d %d %s');
     [sed_matrix] = load(sed_file);
     sed_matrix = full(spconvert(sed_matrix));
     
-    %P=path;
-    %path(P,'../../matlab')
-    
-    %% Create graphs of the unmodified counts
-    % Create graphs of the s0 CDF
-    gcf0 = figure; 
-    gca0 = cdfplot(s0_counts);
-
-    % Create graphs of the s1 CDF
-    gcf1 = figure;
-    gca1 = cdfplot(s1_counts);
-
+        
     % Find the number of categories that have count less than five
-    ref_small_categories = size(find(s0_counts < 5), 1)/size(s0_counts, 1);
-    test_small_categories = size(find(s1_counts < 5), 1)/size(s1_counts, 1);
+    s0_small_categories = size(find(s0_counts < 5), 1)/size(s0_counts, 1);
+    s1_small_categories = size(find(s1_counts < 5), 1)/size(s1_counts, 1);
     
     
     %% 
@@ -46,13 +37,13 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
     merged_idxs = [];
     
     while(size(idxs, 1) > 0),
-        size(idxs, 1)
+                
         % Pick a low frequency category: 
         i = idxs(1);
         
         expected_id = s0_ids(i);
         expected_id_name = names(i);
-        [Y, sorted_sed_ids] = sort(sed_matrix(expected_id, :));
+        [Y, sorted_sed_ids] = sort(sed_matrix(expected_id, :), 'ascend');
                 
         for j = [sorted_sed_ids],
                         
@@ -66,7 +57,7 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
                     s1_counts(j) = 0;
                     
                     idxs = setdiff(idxs, find(s0_ids == j));
-                end
+            end               
             
             if(s0_counts(i) > 5),                  
                 break;
@@ -86,22 +77,10 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
     names = [names(large_count_idxs); names(merged_idxs)];
     
     
-    %% Plot CDFs of the merged categories
-    figure(gcf0);
-    hold on;
-    cdfplot(s0_counts);
-    hold off;
-    
-    figure(gcf1);
-    hold on;
-    cdfplot(s1_counts);
-    hold off;
-    
     %% Calculate number of categories w/count less than 5 now.
-    ref_merged_small_categories = size(find(s0_counts < 5), 1)/size(s0_counts, 1);
-    test_merged_small_categories = size(find(s1_counts < 5), 1)/size(s1_counts, 1);
-    
-    
+    s0_merged_small_categories = size(find(s0_counts < 5), 1)/size(s0_counts, 1);
+    s1_merged_small_categories = size(find(s1_counts < 5), 1)/size(s1_counts, 1);
+        
     %%
     % Run the hypothesis test
     chi_squared_stat = sum( (s1_counts - s0_counts).^2./(s0_counts));
@@ -121,14 +100,26 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
      % Print out the statistics
      outfid = fopen(stats_file, 'w');
      fprintf(outfid, 'Number of categories w/less than five items originally: %d %d\n', ...
-         ref_small_categories, test_small_categories);
+         s0_small_categories, s1_small_categories);
      fprintf(outfid, 'Number of categories w/less than five item safter merge: %d %d\n', ...
-         ref_merged_small_categories, test_merged_small_categories);
-     close(outfid);
+         s0_merged_small_categories, s1_merged_small_categories);
+    
+     fprintf(outfid, 'reject-null: %d p-value: %3.2f\n\n', h, p);
      
-     %% Print the graphs to the right directory
-    %exportfig(gcf0, s0_histogram_file, 'width', 3.2, 'FontMode', 'fixed', 'FontSize', 8);
-    %exportfig(gcf1, s1_histogram_file, 'width', 3.2, 'FontMode', 'fixed', 'FontSize', 8);
+     % Calculate contribution to chi^2 statistic by each category
+     indiv_chi_contrib = (s1_counts - s0_counts).^2./s0_counts;
+     [Y, I] = sort(indiv_chi_contrib, 'descend');
+     
+     for i = [I]',
+         fprintf(outfid, '%d, %d, %d, %3.2f\n\n', ... 
+         s0_ids(i), s0_counts(i), s1_counts(i), indiv_chi_contrib(i));
+     end
+     
+     fclose(outfid);
+     
+     
+     
+    
 
      
      
