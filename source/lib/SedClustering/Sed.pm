@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm,v 1.2 2009/08/06 17:33:20 rajas Exp $
+# $cmuPDL: Sed.pm,v 1.3 2009/09/27 19:45:20 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -135,7 +135,10 @@ my $_calculate_edit_distance_internal = sub {
 
     my %distance_hash;
 
-    for (my $i = 0; $i < scalar(@{$input_array_ref}); $i++) {        
+    my $num_items = scalar(@{$input_array_ref});
+    for (my $i = 0; $i < $num_items; $i++) {        
+
+        printf "SeD Calculator: Processing %d of %d\n", $i+1, $num_items;
 
         my @item1 = split(' ', $input_array_ref->[$i]);
         for (my $j = $i; $j < scalar(@{$input_array_ref}); $j++) {
@@ -266,6 +269,18 @@ sub do_output_files_exist {
     }
 
     return 0;
+}
+
+
+##
+# Returns the distance file
+#
+sub get_distance_matrix_file {
+
+    assert(scalar(@_ ) == 1);
+    my ($self) = @_;
+
+    return $self->{DISTANCE_FILE};
 }
 
 

@@ -281,6 +281,7 @@ sub calculate_structural_mutation_error {
 # Runs a X^2 hypothesis test to determine if structural mutations exist
 #
 # @param cluster_info_hash_ref: Information about each cluster
+# @param sed: An object specifying distances between clusters
 # @param output_dir: Input files created by this function for use by
 #  MATLAB will be placed in this directory
 # 
@@ -288,8 +289,8 @@ sub calculate_structural_mutation_error {
 ##
 sub determine_if_structural_mutations_exist {
 
-    assert(scalar(@_) == 2);
-    my ($cluster_info_hash_ref, $output_dir) = @_;
+    assert(scalar(@_) == 3);
+    my ($cluster_info_hash_ref, $sed, $output_dir) = @_;
 
     my $s0_cluster_frequencies_file = "$output_dir/s0_cluster_frequencies.dat";
     my $s1_cluster_frequencies_file = "$output_dir/s1_cluster_frequencies.dat";
@@ -304,7 +305,7 @@ sub determine_if_structural_mutations_exist {
                                   "category_count_comparisons",
                                   $output_dir);
 
-    $test->run_chi_squared();
+    $test->run_chi_squared($sed->get_distance_matrix_file());
 
     print "Determining if structural mutations exist\n";
     my $results = $test->get_hypothesis_test_results();
@@ -352,6 +353,7 @@ sub identify_mutations {
     
     # Run Chi-Squared test here to tell if we should label *anything* as a structural mutation
     my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
+                                                                             $sed,
                                                                              $output_dir);
 
     # Identify mutation types

@@ -60,7 +60,8 @@ sub new {
     $self->{TEST_DISTRIB_FILE} = $test_file;
     $self->{OUTPUT_FILE} = "$output_dir/$name" . "_hypothesis_test_results.dat";
     $self->{REF_GRAPH_FILE} = "$output_dir/$name" . "_ref_distrib_graph.eps";
-    $self->{TEST_GRAPH_FILE} = "$output_dir/$name" . "_test_distribu_graph.eps";
+    $self->{TEST_GRAPH_FILE} = "$output_dir/$name" . "_test_distrib_graph.eps";
+    $self->{STATS_FILE} = "$output_dir/$name" . "_stats.dat";
     $self->{HAVE_TESTS_BEEN_RUN} = 0;
 
     bless($self, $class);
@@ -107,17 +108,19 @@ sub run_kstest2 {
 #   id count name
 # id is the id of the category; count is the number of elements contained; name is
 # a field that is used to combine multiple categories if each does not contain enough elements.
-# Categories with the same name are assumed to be comparable.
+#
+# @param self: The object container
+# @param sed_file: A matrix specifying similarities values between categories
 ##
 sub run_chi_squared {
-    assert(scalar(@_) == 1);
-    my ($self) = @_;
+    assert(scalar(@_) == 2);
+    my ($self, $sed_file) = @_;
 
     my $curr_dir = getcwd();
     chdir '../lib/StatisticalTests';
 
-    system("matlab -nojvm -nosplash -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\', \'$self->{REF_GRAPH_FILE}\', \'$self->{TEST_GRAPH_FILE}\'); quit\"".
-           "|| matlab -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\', \'$self->{REF_GRAPH_FILE}\', \'$self->{TEST_GRAPH_FILE}\'); quit\"") == 0
+    system("matlab -nojvm -nosplash -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$sed_file\', \'$self->{OUTPUT_FILE}\', \'$self->{STATS_FILE}\'); quit\"".
+           "|| matlab -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$sed_file\', \'$self->{OUTPUT_FILE}\', \'$self->{STATS_FILE}\'); quit\"") == 0
            or die("Could not run Matlab compare_categories script\n");
     
     chdir $curr_dir;
@@ -161,6 +164,8 @@ sub get_hypothesis_test_results {
     open(my $hyp_test_results_fh, "<$self->{OUTPUT_FILE}")
         or die ("Could not open $self->{OUTPUT_FILE}: $!\n");
 
+    my $uncomparable = 0;
+    my $rows = 0;
     while (<$hyp_test_results_fh>) {
         # This regexp must match the output specified by _run_hypothesis_test()
         if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+)/) {
@@ -178,6 +183,11 @@ sub get_hypothesis_test_results {
                 $row_name = $edge_row_num;
             }
             assert(defined $row_name);
+
+            if($p_value  < 0) {
+                $uncomparable++;
+            }
+            $rows++;
 
             $hyp_test_results_hash{$row_name} = { REJECT_NULL => $reject_null,
                                                P_VALUE        => $p_value,

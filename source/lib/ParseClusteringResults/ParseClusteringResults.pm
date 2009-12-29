@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.27 2009/12/15 00:03:09 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.28 2009/12/21 20:32:27 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -726,13 +726,15 @@ my $_print_all_clusters = sub {
     my $cluster_info_hash_ref = $self->{CLUSTER_INFO_HASH};
     my $graph_info = $self->{PRINT_GRAPHS_CLASS};
 
+    # Information about statistical tests run
+    my $response_time_test_not_run = 0;
+    my $s0_small_clusters = 0;
+    my $s1_small_clusters = 1;
+
     open (my $out_fh, ">$self->{CLUSTER_INFO_TEXT_FILE}") or 
         die "ParseClusterResults: _print_all_clusters(): could not open " .
         "$self->{CLUSTER_INFO_TEXT_FILE}.  $!\n";
-
-    # Aggregate statistics
-    my $likelihood_diff = 0;
-
+    
     # Print the header to the output
     printf $out_fh "%-15s\t%-40s\t%-20s\t%-20s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\t%-15s\n",
     "cluster_id", "mutation_type", "s0_likelh", "s1_likelh", "s0_avg_lat", 
@@ -752,13 +754,41 @@ my $_print_all_clusters = sub {
         $response_time_stats->{AVGS}->[0], $response_time_stats->{AVGS}->[1],
         $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[1],
         $freqs->[0], $freqs->[1];
-        
-        # Collect some aggregate statistics
-        $likelihood_diff += $likelihoods->[1] - $likelihoods->[0];
 
+        # Gather information about the statistical tests run
+        if($response_time_stats->{P_VALUE} < 0) {
+            $response_time_test_not_run++;
+        }
+        
+        if($freqs->[0] < 5) {
+            $s0_small_clusters++;
+        }
+        if($freqs->[1] < 5) {
+            $s1_small_clusters++;
+        }
     }
+    close($out_fh);
+
+    # @bug: Write information on whether statistical tests were run on each cluster
+    # to this file.  Writing this information here breaks many many many abstraction
+    # layers :(
+    open ($out_fh, ">$self->{AGGREGATE_INFO_TEST_FILE}") or
+        die "ParseClusteringResults: _print_all_clusters(): could not open " .
+             "$self->{AGGREGATE_INFO_TEST_FILE}.  $!\n";             
+    
+    my $num_clusters = keys %{$cluster_info_hash_ref};
+
+    printf $out_fh "Number of response-time tests not run: %d (%3.2f)\n",
+    $response_time_test_not_run, $response_time_test_not_run/$num_clusters;
+
+    printf $out_fh "Number of s0 clusters with less than 5 requests: %d (%3.2f)\n",
+    $s0_small_clusters, $s0_small_clusters/$num_clusters;
+
+    printf $out_fh "Number of s1 clusters with less than 5 requests: %d (%3.2f)\n",
+    $s1_small_clusters, $s1_small_clusters/$num_clusters;
 
     close($out_fh);
+
 };
 
 
@@ -832,6 +862,7 @@ sub new {
     $self->{NOT_INTERESTING_GRAPH_FILE} = "$output_dir/not_interesting_clusters.dot";
     $self->{CLUSTER_INFO_TEXT_FILE} = "$output_dir/cluster_info.dat";
     $self->{RESPONSE_TIME_CHANGES_GRAPH_FILE} = "$output_dir/weighted_response_time_changes.dot";
+    $self->{AGGREGATE_INFO_TEST_FILE} = "$output_dir/statistical_tests_run_info.dat";
 
     $self->{UNWEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/unweighted_structural_mutations.dot";
     $self->{UNWEIGHTED_COMBINED_GRAPH_FILE} = "$output_dir/unweighted_combined_ranked_graphs.dot";
