@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.28 2009/12/21 20:32:27 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.29 2009/12/29 06:51:56 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -36,6 +36,10 @@ use ParseClusteringResults::IdentifyMutations
 
 # Import value of DEBUG if defined
 no define DEBUG =>;
+
+# Fast-path calculation of the number of statistical tests that can be run.  Used
+# for USENIX'10 experiments
+use define CALC_NUM_TESTS_SKIPPED_ONLY => 0;
 
 
 #### Private functions ############
@@ -329,6 +333,17 @@ my $_compute_cluster_info = sub {
     # Get the total number of requests in each dataset
     my $total_requests = $graph_info->get_snapshot_frequencies();
 
+    # This is executed only if Spectroscope is run to only output whether or not the statistical
+    # tests it intends to run are possible
+    # if (CALC_NUM_TESTS_SKIPPED_ONLY) { # Ugh, perl define does not work like C defines
+    my $small_clusters = 0;
+    my $num_response_time_tests_not_run = 0;
+    my $num_kstest_reqs = 0;
+    my $num_chi_squared_reqs = 0;
+    my $total_s0_reqs = 0;
+    my $total_s1_reqs = 0;
+    #}
+
     foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
         print "Processing statistics for Cluster $key...\n";
 
@@ -340,12 +355,37 @@ my $_compute_cluster_info = sub {
         $cluster_probs[0] = $self->$_compute_cluster_prob($cluster_freqs->[0], $total_requests->[0]);
         $cluster_probs[1] = $self->$_compute_cluster_prob($cluster_freqs->[1], $total_requests->[1]);
 
+        # This code is used only when determining how many statistical tests
+        # must be skipped
+        if (CALC_NUM_TESTS_SKIPPED_ONLY) {
+            $total_s0_reqs += $cluster_freqs->[0];
+            $total_s1_reqs += $cluster_freqs->[1];
+                
+            if ($cluster_freqs->[0] <= 5 || $cluster_freqs-[1] <= 5) {
+                $small_clusters++;
+                $num_chi_squared_reqs += $cluster_freqs->[0] + $cluster_freqs->[1];
+            } 
+
+            # Matlab help suggests that kstest2 produces good results when this
+            # condition is false
+            if($cluster_freqs->[0] == 0 || 
+               $cluster_freqs->[1] == 0 ||
+               (($cluster_freqs->[0]*$cluster_freqs->[1])/($cluster_freqs->[0] + $cluster_freqs->[1]) < 4)) {
+                $num_response_time_tests_not_run++;
+
+                $num_kstest_reqs += $cluster_freqs->[0] + $cluster_freqs->[1];
+            }
+            next;
+        }
+
         # Compute response time statistics
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
         my $response_time_stats = 
             $self->$_compute_response_time_statistics($response_times->{S0_RESPONSE_TIMES},
                                                       $response_times->{S1_RESPONSE_TIMES},
                                                       $key);
+
+            
         # Print boxplots of reponse times        
         $self->$_print_boxplots($key, 
                                 $response_times->{S0_RESPONSE_TIMES}, 
@@ -373,11 +413,31 @@ my $_compute_cluster_info = sub {
         $cluster_info_hash{$key} = \%this_cluster_info;
     }
 
+    if (CALC_NUM_TESTS_SKIPPED_ONLY) {
+        my $num_clusters = keys %{$cluster_assignment_hash};
+        
+        printf "Number of response-time tests not run: %d (%3.2f)\n",
+        $num_response_time_tests_not_run, $num_response_time_tests_not_run/$num_clusters;
+        printf "Number of requests for which tests not run: %d (%3.2f)\n",
+        $num_kstest_reqs, ($num_kstest_reqs/($total_s0_reqs + $total_s1_reqs));
+
+        printf "Number of clusters with less than 5 requests: %d (%3.2f)\n",
+        $small_clusters, $small_clusters/$num_clusters;
+
+        printf "Number of reuqests for which chi^2 test not run: %d (%3.2f)\n",
+        $num_chi_squared_reqs, ($num_chi_squared_reqs/($total_s0_reqs + $total_s1_reqs));
+
+        printf "Number of s0 reqs: %d.  Number of s1 reqs: %d\n.  Total reqs: %d",
+        $total_s0_reqs, $total_s1_reqs, ($total_s0_reqs + $total_s1_reqs);
+        
+        return;
+    }
+    
     IdentifyMutations::identify_mutations(\%cluster_info_hash, $self->{SED_CLASS}, 
                                           $self->{INTERIM_OUTPUT_DIR});
-     
+    
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
-
+    
 };
 
 
@@ -918,6 +978,13 @@ sub print_ranked_clusters {
     }
     if(!defined $self->{CLUSTER_INFO_HASH}) {
         $self->$_compute_cluster_info();
+
+        # If all that we want to do is calculate the 
+        # number of statistical tests that must be skipped,
+        # just return
+        if (CALC_NUM_TESTS_SKIPPED_ONLY) {
+            return;
+        }
     }
 
     my $unweighted_mutation_hash = 

@@ -31,9 +31,9 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
     % are merged.  The choice of which low frequency categories to merge together 
     % is based on the normalized SeD between them.
     %
-    large_count_idxs = find(s0_counts > 10);
+    large_count_idxs = find(s0_counts > 5);
     
-    idxs = find(s0_counts <= 10);
+    idxs = find(s0_counts <= 5);
     merged_idxs = [];
     
     while(size(idxs, 1) > 0),
@@ -99,9 +99,9 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
      %%
      % Print out the statistics
      outfid = fopen(stats_file, 'w');
-     fprintf(outfid, 'Number of categories w/less than five items originally: %d %d\n', ...
+     fprintf(outfid, 'fraction of categories w/less than five items originally: %3.2f %3.2f\n', ...
          s0_small_categories, s1_small_categories);
-     fprintf(outfid, 'Number of categories w/less than five item safter merge: %d %d\n', ...
+     fprintf(outfid, 'fraction of categories w/less than five item after merge: %3.2f %3.2f\n', ...
          s0_merged_small_categories, s1_merged_small_categories);
     
      fprintf(outfid, 'reject-null: %d p-value: %3.2f\n\n', h, p);
@@ -111,8 +111,8 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
      [Y, I] = sort(indiv_chi_contrib, 'descend');
      
      for i = [I]',
-         fprintf(outfid, '%d, %d, %d, %3.2f\n\n', ... 
-         s0_ids(i), s0_counts(i), s1_counts(i), indiv_chi_contrib(i));
+         fprintf(outfid, '%d, %d, %d, %s, %3.2f\n', ... 
+         s0_ids(i), s0_counts(i), s1_counts(i), char(names(i)), indiv_chi_contrib(i));
      end
      
      fclose(outfid);
