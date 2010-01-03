@@ -27,7 +27,7 @@ function [] = compare_categories(s0_counts_file, s1_counts_file, sed_file, outpu
     s0_small_categories = size(find(s0_counts <= 5), 1)/size(s0_counts, 1);
     s1_small_categories = size(find(s1_counts <= 5), 1)/size(s1_counts, 1);
 
-    large_count_idxs = find(s0_counts > 5);
+    large_count_idxs = intersect(find(s0_counts > 5), find(s1_counts > 5));
     
     
 %    %% 

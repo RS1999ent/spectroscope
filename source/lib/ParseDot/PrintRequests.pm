@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.24 2009/10/08 09:34:39 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.25 2009/11/04 02:04:19 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -336,6 +336,9 @@ sub create_summary_node {
         sprintf("Standard Deviations: %d us ; %d us\\n",
                 int($response_time_stats->{STDDEVS}->[0] + .5),
                 int($response_time_stats->{STDDEVS}->[1] + .5));
+    $summary_node = $summary_node . 
+        sprintf("KS-Test2 P-value: %3.3f\\n",
+                $response_time_stats->{P_VALUE});
 
     # Add probability information
     $summary_node = $summary_node . 

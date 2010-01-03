@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.29 2009/12/29 06:51:56 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.30 2010/01/02 21:30:47 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -382,8 +382,8 @@ my $_compute_cluster_info = sub {
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
         my $response_time_stats = 
             $self->$_compute_response_time_statistics($response_times->{S0_RESPONSE_TIMES},
-                                                      $response_times->{S1_RESPONSE_TIMES},
-                                                      $key);
+                                                     $response_times->{S1_RESPONSE_TIMES},
+                                                     $key);
 
             
         # Print boxplots of reponse times        
