@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.30 2010/01/02 21:30:47 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.31 2010/01/03 06:40:13 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -355,11 +355,13 @@ my $_compute_cluster_info = sub {
         $cluster_probs[0] = $self->$_compute_cluster_prob($cluster_freqs->[0], $total_requests->[0]);
         $cluster_probs[1] = $self->$_compute_cluster_prob($cluster_freqs->[1], $total_requests->[1]);
 
+        $total_s0_reqs += $cluster_freqs->[0];
+        $total_s1_reqs += $cluster_freqs->[1];
+
+
         # This code is used only when determining how many statistical tests
         # must be skipped
         if (CALC_NUM_TESTS_SKIPPED_ONLY) {
-            $total_s0_reqs += $cluster_freqs->[0];
-            $total_s1_reqs += $cluster_freqs->[1];
                 
             if ($cluster_freqs->[0] <= 5 || $cluster_freqs-[1] <= 5) {
                 $small_clusters++;
@@ -434,7 +436,8 @@ my $_compute_cluster_info = sub {
     }
     
     IdentifyMutations::identify_mutations(\%cluster_info_hash, $self->{SED_CLASS}, 
-                                          $self->{INTERIM_OUTPUT_DIR});
+                                          $self->{INTERIM_OUTPUT_DIR},
+                                          $total_s0_reqs + $total_s1_reqs);
     
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
     

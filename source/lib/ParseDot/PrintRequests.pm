@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.25 2009/11/04 02:04:19 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.26 2010/01/03 06:40:13 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -354,8 +354,9 @@ sub create_summary_node {
                                             int($percent_reqs_s1 + .5));
 
     # Add total number of requests in the clsuter
-    $summary_node = $summary_node . sprintf("Total requests: %d\"]",
-                                            $total_reqs);
+    $summary_node = $summary_node . sprintf("requests: %d ; %d\"]",
+                                            $frequencies_array_ref->[0],
+                                            $frequencies_array_ref->[1]);
 
     return $summary_node;
 }
@@ -628,6 +629,7 @@ sub get_response_times_given_global_ids {
             $graph_local_id = $1;
             $response_time = $2;
         } else {
+	    print "$graph_arr[0]\n";
             assert(0);
         }
 

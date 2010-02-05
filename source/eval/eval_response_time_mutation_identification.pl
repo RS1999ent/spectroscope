@@ -90,6 +90,16 @@ my $g_avg_p_values_correct = 0;
 # Number of requests that correspond to correctly identified categories
 my $g_num_requests_correctly_identified = 0;
 
+# Average s0 latency of edges containing the mutation node.
+my $g_avg_s0_edge_latency = 0;
+               
+# Average s1 latency of edges containing the mutation node.
+my $g_avg_s1_edge_latency = 0;
+                
+my $g_num_s0_edges_found = 0;
+
+my $g_num_s1_edges_found = 0;
+
 
 ###### Private functions #######
 
@@ -145,17 +155,30 @@ sub find_edge_mutation {
 
     while (<$fh>) {
         
-        if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"(\w+)\" label=\"p:([0-9\.]+)/) {
+        if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"(\w+)\" label=\"p:([-0-9\.]+)\\n.*a: ([-0-9\.]+)us \/ ([-0-9\.]+)us/) {
             my $src_node_id = "$1.$2";
             my $dest_node_id = "$3.$4";
             my $color = $5;
             my $p = $6;
-
+            my $s0_edge_latency = $7;
+            my $s1_edge_latency = $8;
             my $src_node_name = $node_name_hash->{$src_node_id};
             my $dest_node_name = $node_name_hash->{$dest_node_id};
             
             if ($dest_node_name =~ /$g_mutation_node/) {
                 $found = 1;
+                print "$s0_edge_latency $s1_edge_latency\n";
+                if($s0_edge_latency > 0) {
+                    $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + $s0_edge_latency)/
+                                                         ($g_num_s0_edges_found + 1);
+                    $g_num_s0_edges_found++;
+                }
+                if ($s1_edge_latency > 0) {
+                    $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + $s1_edge_latency)/
+                                                             ($g_num_s1_edges_found + 1);
+                    $g_num_s1_edges_found++;
+                }
+
                 if ($p < 0.05 && $p >= 0) {
                     $is_mutation = 1;
                 }
@@ -317,6 +340,13 @@ printf "Total number of requests that contain the mutated node: %d\n",
 printf "Total number of requests with mutated node identified as a response-time mutation: %3.2f\n\n",
     $g_num_requests_correctly_identified/$g_num_requests_with_mutated_node;
 
+### Edge information
+
+printf "Average s0 latency of edges containing the mutation node: %3.2f\n",
+    $g_avg_s0_edge_latency;
+
+printf "Average s1 latency of edges containing the mutation node: %3.2f\n",
+    $g_avg_s1_edge_latency;
 
 
 
