@@ -12,4 +12,5 @@ while (<STDIN>) {
     $count++;
 }
 
-print "There are $count requests in this trace\n";
+my $num_req = $count -1;
+print "There are $num_req requests in this trace\n";

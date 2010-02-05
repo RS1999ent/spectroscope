@@ -61,25 +61,28 @@ my $RESPONSE_TIME_MASK = 0x100;
 ##
 sub find_mutation_type  {
 
-    assert(scalar(@_) == 2);
-    my ($this_cluster_info_hash_ref, $structural_mutations_exist) = @_;
+    assert(scalar(@_) == 3);
+    my ($this_cluster_info_hash_ref, $structural_mutations_exist, $total_reqs) = @_;
     
     my $snapshot_freqs = $this_cluster_info_hash_ref->{FREQUENCIES};
     my $mutation_type = $NO_MUTATION;
+    my $avg_reqs_per_snapshot = $total_reqs/2;
 
     # Identify structural mutations and originating clusters
     if($structural_mutations_exist) {
-        if($snapshot_freqs->[1] > 1) {
-            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
-                $mutation_type = $STRUCTURAL_MUTATION;
-            }
+#        if($snapshot_freqs->[1] > 1) {
+#            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
+        if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 10) {
+            $mutation_type = $STRUCTURAL_MUTATION;
         }
-        if ($snapshot_freqs->[0] > 1) {
-            if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
-                $mutation_type = $ORIGINATING_CLUSTER;
-            }
+
+#        if ($snapshot_freqs->[0] > 1) {
+#        if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
+        if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 10) {
+            $mutation_type = $ORIGINATING_CLUSTER;
         }
     }
+
 
     # Identify response-time mutations
     my $hypothesis_test_results = $this_cluster_info_hash_ref->{RESPONSE_TIME_STATS};
@@ -170,11 +173,11 @@ sub identify_originators_and_cost {
                 }
 
                 # Enforce 1-N relationship explicitly
-                #if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
-                #    print "$o_id cannot be an originating cluster of $m_id\n" .
-                #        "\t $m_id has increased in freq more than $o_id has decreased\n";
-                #    next;
-                #}
+                if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
+                    print "$o_id cannot be an originating cluster of $m_id\n" .
+                        "\t $m_id has increased in freq more than $o_id has decreased\n";
+                    next;
+                }
 
                 $weight = 1/$sed_obj->get_sed($m_id, $o_id);
                 $total_weight += $weight;
@@ -228,8 +231,8 @@ sub identify_originators_and_cost {
 ##
 sub calculate_structural_mutation_error {
 
-    assert(scalar(@_) == 1);
-    my ($cluster_info_hash_ref) = @_;
+    assert(scalar(@_) == 2);
+    my ($cluster_info_hash_ref, $output_dir) = @_;
 
     # Calculate originator cost
     my $total_originator_cost = 0;
@@ -270,10 +273,18 @@ sub calculate_structural_mutation_error {
         $weighted_error = abs($total_cost - $weighted_expected_cost)/$total_cost;
     }
         
+    my $output_file = "$output_dir/costs.dat\n";
+    open (my $output_fh, ">$output_file") or die ("Could not open output file\n");
+    printf "Total Cost: %3.2f\n", $total_cost;
+    printf $output_fh "Total cost of structural mutations: %3.4f\n", $total_cost;
 
-    print "Total cost of structural mutations: $total_cost\n";
-    print "Expected cost of structural mutations (unweighted): $unweighted_expected_cost ($unweighted_error)\n";
-    print "Expected cost of structural mutations (weighted): $weighted_expected_cost ($weighted_error)\n";
+    printf $output_fh  "Expected cost of structural mutations (unweighted): %3.4f\n (%3.4f)\n",
+    $unweighted_expected_cost, $unweighted_error;
+
+    printf $output_fh "Expected cost of structural mutations (weighted): %3.4f\n (%3.4f)\n",
+    $weighted_expected_cost, $weighted_error;
+
+    close ($output_fh);
 }
 
 
@@ -348,8 +359,8 @@ sub determine_if_structural_mutations_exist {
 ##
 sub identify_mutations {
     
-    assert(scalar(@_) == 3);
-    my ($cluster_info_hash_ref, $sed, $output_dir) = @_;
+    assert(scalar(@_) == 4);
+    my ($cluster_info_hash_ref, $sed, $output_dir, $total_reqs) = @_;
     
     # Run Chi-Squared test here to tell if we should label *anything* as a structural mutation
     my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
@@ -360,13 +371,14 @@ sub identify_mutations {
     for my $key (keys %{$cluster_info_hash_ref}) {
         my %mutation_info;
         $mutation_info{MUTATION_TYPE} = find_mutation_type($cluster_info_hash_ref->{$key}, 
-                                                           $structural_mutations_exist);
+                                                           $structural_mutations_exist, 
+                                                           $total_reqs);
         $cluster_info_hash_ref->{$key}->{MUTATION_INFO} = \%mutation_info;
     }
 
     # Identify originators and cost of mutations
     identify_originators_and_cost($cluster_info_hash_ref, $sed);
-    calculate_structural_mutation_error($cluster_info_hash_ref);
+    calculate_structural_mutation_error($cluster_info_hash_ref, $output_dir);
 }
 
 
