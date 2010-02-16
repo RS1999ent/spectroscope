@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v, #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v, #
 
 ##
 # @author Raja Sambasivan
@@ -89,8 +89,11 @@ my @g_combined_ranked_results_bitmap;
 
 ###### Private functions #######
 
+##
+# Prints input options
+##
 sub print_options {
-    print "perl eval_response_time_mutation_quality.pl\n";
+    print "perl eval_response_time_mutation_identification.pl\n";
     print "\tcombined_ranked_results_file: File containing combined ranked results\n";
     print "\toriginators_file: File containing the originators\n";
     print "\tnot_interesting_file: File containing not interesting clusters\n";
@@ -120,8 +123,22 @@ sub get_options {
 
 
 ##
+# Calculate base2 logarithm
+#
+# @param val: Will calculate log2(val)
+# @return: log2(val)
+##
+sub log2 {
+    assert(scalar(@_) == 1);
+    my ($val) = @_;
+
+    return log($val)/log(2);
+}
+
+
+##
 # Parses the edges of a cluster representative to find instances where the
-# mutated node is the destination node.  Checks to see if these edges are marked
+# mutation node is the destination node.  Checks to see if these edges are marked
 # as response-time mutations.  
 #
 # @param fh: The filehandle of the file that contains the cluster rep
@@ -129,11 +146,11 @@ sub get_options {
 #
 # @return: A pointer to a hash with elements:
 #    NODE_FOUND: 1 if the node was found as a destination edge
-#    IS_MUTATION: 1 if it was identified as a mutation
+#    IS_MUTATION: 1 if the dest edge was identified as a mutation
 #    S0_LATENCIES: if NODE_FOUND is 1, this contains a reference
-#    to a pointer containing the array of s0 edge latencies for the relevant edge
+#    to a pointer containing the array of s0 edge latencies for the dest edge
 #    S1_LATENCIES: if NODE_COUNT is 1, this contains a reference
-#    to a pointer containing th earray of s1 edge latencies for the relevant edge
+#    to a pointer containing th earray of s1 edge latencies for the dest edge
 ##
 sub find_edge_mutation {
     my ($fh, $node_name_hash) = @_;
@@ -157,7 +174,7 @@ sub find_edge_mutation {
             
             if ($dest_node_name =~ /$g_mutation_node/) {
                 $found = 1;
-                print "$s0_edge_latency $s1_edge_latency\n";
+                print "Relevant edge found: $s0_edge_latency $s1_edge_latency\n";
                 if ($s0_edge_latency > 0) { push(@s0_edge_latencies, $s0_edge_latency);}
                 if ($s1_edge_latency > 0) { push(@s1_edge_latencies, $s1_edge_latency);}
 
@@ -176,29 +193,26 @@ sub find_edge_mutation {
 
 
 ##
-# Parses all other files to find categories containing requests that
-# contained the mutated node, but were not identified
+# Updates accounting information about the number of categories and requests
+# that contain the mutation node.  Should be called once per category.
 #
-# @cluster_id: The cluster id
-# @param mutation_type: The specific mutation of this result
-# @param cost: The cost of the mutation category
-# @param overall_mutation-type: The overall mutation category type
-# @param p_value: The p-value of the mutation category
-# @param s1_reqs: 
+# @param s1_reqs: The number of requests from s1 in the category
+# @param mutation_info: Information about whether the category contains requests that
+# contain the mutation node.
 ##
 sub update_mutation_accounting_info {
-    my ($cluster_id, $s1_reqs, $mutation_info) = @_;
-
-
+    assert(scalar(@_) == 2);
+    my ($s1_reqs, $mutation_info) = @_;
+    
     my $s0_edge_latencies = $mutation_info->{S0_LATENCIES};
     my $s1_edge_latencies = $mutation_info->{S1_LATENCIES};
 
-    $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + sum(@{$s0_edge_latencies}))/
+    $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + sum(0, @{$s0_edge_latencies}))/
         ($g_num_s0_edges_found + scalar(@{$s0_edge_latencies}));
-    $g_num_s0_edges_found+= scalar(@{$s0_edge_latencies});
+    $g_num_s0_edges_found += scalar(@{$s0_edge_latencies});
 
     
-    $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + sum(@{$s1_edge_latencies}))/
+    $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + sum(0, @{$s1_edge_latencies}))/
         ($g_num_s1_edges_found + scalar(@${s1_edge_latencies}));
     $g_num_s1_edges_found += scalar(@{$s1_edge_latencies});
 
@@ -208,15 +222,18 @@ sub update_mutation_accounting_info {
 
     
 ##
-# Parses the combined ranked results file 
+# Parses the combined ranked results file and extracts information
+# necessary to extract the number of relevant virtual categories and
+# requests, the number of false-positives, and the NDCG value.
 #
 # @param cluster_id: The cluster_id
 # @param mutation_type: The specific mutation of this result
-# @param cost: The cost of the mutation category
+# @param cost: The cost of this virtual mutation category
 # @param overall_mutation_type: The overall mutation category type
-# @param p_value: The p-value of the mutation category
-# @param s1_reqs: The number of requests from s1 in this category
-# @param input_fh: Current index into the file
+# @param p_value: The p-value of ths virtual mutation category
+# @param s1_reqs: The number of requests from s1 in this virtual
+# @param mutation_info: Information about whether this virtual category contains
+# requests that contain the mutation node
 ##
 sub compute_combined_ranked_results_stats {
     assert(scalar(@_) == 7);
@@ -269,9 +286,8 @@ sub compute_combined_ranked_results_stats {
 }
 
 
-                                          
-# Parses requests.  Goes through each input file and collects the appropriate
-# response-time mutation statistics.
+##                                          
+# Parses categories in the input file
 #
 # @param file: The file to process
 # @param is_combined_ranked_results_file: is this the combined ranked results file?
@@ -303,7 +319,7 @@ sub handle_requests {
             $s1_reqs = $6;
             my %node_name_hash;
             
-            DotHelper::parse_nodes_from_file($input_fh, \%node_name_hash);
+            DotHelper::parse_nodes_from_file($input_fh, 1, \%node_name_hash);
             my $mutation_info = find_edge_mutation($input_fh, \%node_name_hash);
             
             if($is_combined_ranked_results_file) {
@@ -313,7 +329,7 @@ sub handle_requests {
             }
             # If this cluster was never seen before, add to s1 totals
             if (!defined $g_already_seen_clusters{$cluster_id}) {
-                if($mutation_info->{NODE_FOUND}) {
+                if ($mutation_info->{NODE_FOUND} == 1) {
                     update_mutation_accounting_info($s1_reqs, $mutation_info);
                 }
                 $g_total_s1_reqs += $s1_reqs;
@@ -335,7 +351,7 @@ sub handle_requests {
 
 ##
 # computes the DCG value.  It is computed as: 
-# rel_p = rel_1 + sum(2, p, rel_i/log(i))
+# rel_p = rel_0 + sum(1, p, rel_i/log(i+1))
 #
 # @param results_bitmap: Pointer to an array of 1s and 0s indicating whether the
 # corresponding position in the ranked results file was relevant
@@ -347,8 +363,10 @@ sub compute_dcg {
     my $score = $results_bitmap->[0];
 
     for(my $i = 1; $i < scalar(@{$results_bitmap}); $i++) {
-        $score += $results_bitmap->[$i]/($i+1);
+        $score += $results_bitmap->[$i]/log2($i+1);
     }
+
+    return $score;
 }
 
 
@@ -357,7 +375,7 @@ sub compute_dcg {
 ##
 # Prints category-level statistics
 ##
-sub print_category_info {
+sub print_category_level_info {
     
     my $num_categories = keys %g_already_seen_clusters;
     my $num_virtual_categories = scalar(@g_combined_ranked_results_bitmap);
@@ -383,12 +401,11 @@ sub print_category_info {
     my $normalizer = compute_dcg(\@best_results);
     printf "The NDCG value: %3.3f\n", $dcg/$normalizer;
 
-
     # Coverage info: 
     printf "Total number of categories that contain mutated node: %d\n",
     $g_num_categories_with_mutated_node;
     
-    printf "Total number of categories with mutated node identified as a response-tiem mutations: %3.2f\n",
+    printf "Total number of categories with mutated node identified as a response-time mutations: %3.2f\n\n",
     $g_num_virtual_relevant_categories/$g_num_categories_with_mutated_node;
 }
 
@@ -412,7 +429,7 @@ sub print_request_level_info {
     $num_virtual_response_time_mutation_requests;
     
     ### Precision info
-    printf "Number/fraction of results identified that are false-positives: %d (%%3.2f\n",
+    printf "Number/fraction of results identified that are false-positives: %d (%3.2f)\n",
     $g_num_virtual_requests_false_positives, 
     ($g_num_virtual_requests_false_positives/$num_virtual_response_time_mutation_requests);
     
@@ -424,9 +441,8 @@ sub print_request_level_info {
     printf "Total number of requests that contain the mutated node: %d\n",
     $g_num_requests_with_mutated_node;
     
-    
     ### Coverage info: 
-    printf "Total number of requests with mutated node identified as a response-time mutation: %3.2f\n",
+    printf "Fraction of requests with mutated node identified as a response-time mutation: %3.2f\n\n",
     $g_num_virtual_relevant_requests/$g_num_requests_with_mutated_node;
 }
 
@@ -437,11 +453,11 @@ sub print_request_level_info {
 sub print_edge_level_info {
     
     ### Edge information
-    
+    print "Edge-level information\n";
     printf "Average s0 latency of edges containing the mutation node: %3.2f\n",
     $g_avg_s0_edge_latency;
     
-    printf "Average s1 latency of edges containing the mutation node: %3.2f\n",
+    printf "Average s1 latency of edges containing the mutation node: %3.2f\n\n",
     $g_avg_s1_edge_latency;
 }
 
