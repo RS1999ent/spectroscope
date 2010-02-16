@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.31 2010/01/03 06:40:13 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v $
 
 ##
 # This Perl module implements routines for parsing the results
