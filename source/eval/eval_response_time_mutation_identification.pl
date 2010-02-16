@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v, #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v $ #
 
 ##
 # @author Raja Sambasivan
