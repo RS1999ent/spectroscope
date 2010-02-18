@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.5 2010/02/16 08:40:45 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -425,7 +425,7 @@ sub print_request_level_info {
         $g_num_virtual_relevant_requests + 
         $g_num_virtual_requests_edge_not_identified;
     
-    printf "Total number of response-time mutation requests identified: %df\n",
+    printf "Total number of response-time mutation requests identified: %d\n",
     $num_virtual_response_time_mutation_requests;
     
     ### Precision info
