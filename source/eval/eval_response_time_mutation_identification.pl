@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.5 2010/02/16 08:40:45 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.6 2010/02/18 08:59:38 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -78,8 +78,8 @@ my $g_num_s1_edges_found = 0;
 # ranked results file.
 #####
 my $g_num_virtual_requests = 0;
-my $g_num_virtual_categories_false_positives = 0;
-my $g_num_virtual_requests_false_positives = 0;
+my %g_num_virtual_categories_false_positives = ( RESPONSE_TIME => 0, STRUCTURAL => 0);
+my %g_num_virtual_requests_false_positives = ( RESPONSE_TIME => 0, STRUCTURAL => 0);
 my $g_num_virtual_relevant_categories = 0;
 my $g_num_virtual_relevant_requests = 0;
 my $g_num_virtual_categories_edge_not_identified = 0;
@@ -250,8 +250,8 @@ sub compute_combined_ranked_results_stats {
 
     # Case where we have a structural mutation --- this is a false positive
     if ($is_response_time_mutation == 0) {
-        $g_num_virtual_categories_false_positives++;
-        $g_num_virtual_requests_false_positives += $s1_reqs;
+        $g_num_virtual_categories_false_positives{STRUCTURAL}++;
+        $g_num_virtual_requests_false_positives{STRUCTURAL} += $s1_reqs;
         push(@g_combined_ranked_results_bitmap, 0);
 
         return;
@@ -262,8 +262,8 @@ sub compute_combined_ranked_results_stats {
     if ($mutated_info->{NODE_FOUND} == 0) {
         # Case where we have identified a response-time mutation, but it does
         # not contain the mutated node
-        $g_num_virtual_categories_false_positives++;
-        $g_num_virtual_requests_false_positives += $s1_reqs;
+        $g_num_virtual_categories_false_positives{RESPONSE_TIME}++;
+        $g_num_virtual_requests_false_positives{RESPONSE_TIME} += $s1_reqs;
         push(@g_combined_ranked_results_bitmap, 0);
 
     } elsif ($mutated_info->{NODE_FOUND} == 1 && 
@@ -380,15 +380,25 @@ sub print_category_level_info {
     my $num_categories = keys %g_already_seen_clusters;
     my $num_virtual_categories = scalar(@g_combined_ranked_results_bitmap);
     
-    
     ### Category-level information ####
     print "Category-level information\n";
     print "Total Number of categories: $num_categories\n";
     print "Total Number of Virtual categories: $num_virtual_categories\n";
-    
+
    # Precision info
+    my $false_positive_categories = $g_num_virtual_categories_false_positives{STRUCTURAL} + 
+        $g_num_virtual_categories_false_positives{RESPONSE_TIME};
+
     printf "Fraction of categories in the ranked results that are false-positives: %3.2f\n", 
-    $g_num_virtual_categories_false_positives/$num_virtual_categories;
+    $false_positive_categories/$num_virtual_categories;
+
+    printf "Fraction of structural mutation categories in the ranked results that are false-positives: %d, (%3.2f)\n",
+    $g_num_virtual_categories_false_positives{STRUCTURAL},
+    $g_num_virtual_categories_false_positives{STRUCTURAL}/$num_virtual_categories;
+
+    printf "Fraction of response-time mutation categories in the ranked results that are false-positives: %d, (%3.2f)\n",
+    $g_num_virtual_categories_false_positives{RESPONSE_TIME},
+    $g_num_virtual_categories_false_positives{RESPONSE_TIME}/$num_virtual_categories;
     
     printf "Number/fraction of categories in the ranked results that were identified as\n" .
         " Response-time mutations, but for which the edge was not identified: %d (%3.2f)\n",
@@ -407,7 +417,13 @@ sub print_category_level_info {
     
     printf "Total number of categories with mutated node identified as a response-time mutations: %3.2f\n\n",
     $g_num_virtual_relevant_categories/$g_num_categories_with_mutated_node;
+
+    print "Ranked-results bitmap\n";
+    print @g_combined_ranked_results_bitmap;
+
+    print "\n\n";
 }
+
 
 
 ##
@@ -420,23 +436,35 @@ sub print_request_level_info {
     printf "Total number of s1 requests: %d\n", 
     $g_total_s1_reqs;
     
-    my $num_virtual_response_time_mutation_requests = 
-        $g_num_virtual_requests_false_positives + 
+    my $num_virtual_requests = 
+        $g_num_virtual_requests_false_positives{STRUCTURAL} + 
+        $g_num_virtual_requests_false_positives{RESPONSE_TIME} +
         $g_num_virtual_relevant_requests + 
         $g_num_virtual_requests_edge_not_identified;
     
-    printf "Total number of response-time mutation requests identified: %d\n",
-    $num_virtual_response_time_mutation_requests;
+    printf "Total number of virtual requests identified: %d\n",
+    $num_virtual_requests;
     
     ### Precision info
+    my $false_positives = $g_num_virtual_requests_false_positives{STRUCTURAL} + 
+        $g_num_virtual_requests_false_positives{RESPONSE_TIME};
+    
     printf "Number/fraction of results identified that are false-positives: %d (%3.2f)\n",
-    $g_num_virtual_requests_false_positives, 
-    ($g_num_virtual_requests_false_positives/$num_virtual_response_time_mutation_requests);
+    $false_positives, 
+    ($false_positives/$num_virtual_requests);
+    
+    printf "Number/fraction of structural mutation requests that are false positives: %d (%3.2f)\n",
+    $g_num_virtual_requests_false_positives{STRUCTURAL},
+    $g_num_virtual_requests_false_positives{STRUCTURAL}/$num_virtual_requests;
+    
+    printf "Number/fraction of response-time mutation requests that are false positives: %d (%3.2f)\n",
+    $g_num_virtual_requests_false_positives{RESPONSE_TIME},
+    $g_num_virtual_requests_false_positives{RESPONSE_TIME}/$num_virtual_requests;
     
     printf "Number/fraction of requests contained in the results, that were identified\n" .
         " as response-time mutations, for for which the right edge was not identified: %d (%3.2f)\n",
         $g_num_virtual_requests_edge_not_identified,
-        ($g_num_virtual_requests_edge_not_identified/$num_virtual_response_time_mutation_requests);
+        ($g_num_virtual_requests_edge_not_identified/$num_virtual_requests);
     
     printf "Total number of requests that contain the mutated node: %d\n",
     $g_num_requests_with_mutated_node;
