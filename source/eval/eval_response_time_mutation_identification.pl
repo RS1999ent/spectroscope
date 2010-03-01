@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.6 2010/02/18 08:59:38 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.7 2010/02/19 07:42:26 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -167,7 +167,7 @@ sub find_edge_mutation {
             my $dest_node_id = "$3.$4";
             my $color = $5;
             my $p = $6;
-            my $s0_edge_latency = $7;
+           my $s0_edge_latency = $7;
             my $s1_edge_latency = $8;
             my $src_node_name = $node_name_hash->{$src_node_id};
             my $dest_node_name = $node_name_hash->{$dest_node_id};
@@ -252,7 +252,7 @@ sub compute_combined_ranked_results_stats {
     if ($is_response_time_mutation == 0) {
         $g_num_virtual_categories_false_positives{STRUCTURAL}++;
         $g_num_virtual_requests_false_positives{STRUCTURAL} += $s1_reqs;
-        push(@g_combined_ranked_results_bitmap, 0);
+        push(@g_combined_ranked_results_bitmap, -1);
 
         return;
     }
@@ -363,7 +363,8 @@ sub compute_dcg {
     my $score = $results_bitmap->[0];
 
     for(my $i = 1; $i < scalar(@{$results_bitmap}); $i++) {
-        $score += $results_bitmap->[$i]/log2($i+1);
+        my $contrib = ($results_bitmap->[$i] == 1)? 1: 0;
+        $score += $contrib/log2($i+1);
     }
 
     return $score;
@@ -389,7 +390,8 @@ sub print_category_level_info {
     my $false_positive_categories = $g_num_virtual_categories_false_positives{STRUCTURAL} + 
         $g_num_virtual_categories_false_positives{RESPONSE_TIME};
 
-    printf "Fraction of categories in the ranked results that are false-positives: %3.2f\n", 
+    printf "Number/Fraction of categories in the ranked results that are false-positives: %d (%3.2f)\n", 
+    $false_positive_categories,
     $false_positive_categories/$num_virtual_categories;
 
     printf "Fraction of structural mutation categories in the ranked results that are false-positives: %d, (%3.2f)\n",
