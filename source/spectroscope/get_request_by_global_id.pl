@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: get_request_by_global_id.pl,v 1.1 2009/05/03 02:20:42 source Exp $
+# $cmuPDL: get_request_by_global_id.pl,v 1.2 2009/05/19 06:32:28 source Exp $
 
 ##
 # @author Raja Sambasivan
@@ -56,8 +56,8 @@ sub print_usage {
     print "\t--parse_requests_output_dir: (OPTIONAL) The directory in which the indices\n" .
         "\t created by the ParseRequests module exist\n";
     print "\n";
-    print "Note that only only --spectroscope_output_dir xor --parse_requests_output_dir\n" .
-        " should be specified\n";
+    print "Note that only only --spectroscope_output_dir xor\n" . 
+        "--parse_requests_output_dir should be specified\n";
 }
 
 
