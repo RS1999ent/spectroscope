@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm,v 1.3 2009/09/27 19:45:20 rajas Exp $
+# $cmuPDL: Sed.pm,v 1.4 2009/12/29 06:51:56 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -18,6 +18,7 @@ use strict;
 use Test::Harness::Assert;
 use List::Util qw(max min);
 use Data::Dumper;
+
 
 # Global variables ###############################
 
@@ -61,6 +62,9 @@ my $_load_input_file = sub {
 
 ##
 # Calculates the distance between two strings
+#
+# @bug: This code is *really* slow.  It is deprecated and has been
+# replaced w/a C-only implementation.
 #
 # @param item1: A reference to an array containing the first string.
 # @param item2: A reference to an array containing the second string.
@@ -157,9 +161,14 @@ my $_calculate_edit_distance_internal = sub {
             
             my @item2 = split(' ', $input_array_ref->[$j]);
 
-            my $distance = $self->$_calculate_edit_distance_inner_loop(\@item1, \@item2);
+            open(SED_PIPE, "echo $input_array_ref->[$i] -1 $input_array_ref->[$j] | calculate_sed_inner_loop |");
+            
+            my $distance = <SED_PIPE>;
+            close(SED_PIPE);
+
             # Distance array is 1-indexed.
-            $distance_hash{$i+1}{$j+1} = $distance;
+            $distance_hash{$i+1}{$j+1} = $distance/max(scalar(@item1), scalar(@item2));
+            #$distance_hash{$i+1}{$j+1} = $self->$_calculate_edit_distance_inner_loop(\@item1, \@item2);
         }
     }
     

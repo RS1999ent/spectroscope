@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.12 2009/10/08 09:34:39 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.13 2009/12/21 20:32:02 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -27,6 +27,7 @@ use PassThrough::PassThrough;
 use ParseClusteringResults::ParseClusteringResults;
 use CompareEdges::CompareIndivEdgeDistributions;
 
+$ENV{'PATH'} = "$ENV{'PATH'}" . ":../lib/SedClustering/";
 
 #### Global variables ############################
 

@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm, v, $
+# $cmuPDL: Sed.pm,v 1.1 2009/08/06 17:33:20 rajas Exp $
 
 ##
 # @author Raja Sambasivna
@@ -18,6 +18,11 @@ use Test::Deep;
 
 use lib 'lib';
 use SedClustering::Sed;
+
+delete @ENV{qw(IFS CDPATH ENV BASH_ENV)};
+$ENV{'PATH'} = '/h/rajas/research/cvs_controlled/temp/perf_diagnosis/source/lib/SedClustering/';
+
+
 
 #### Global variables #######
 
@@ -70,7 +75,7 @@ sub create_input_file_and_calculate_edit_distance: Tests(startup => 3) {
     my $sed = new Sed($input_file, $distance_file);
     is($sed->do_output_files_exist(), 0, "Check that output file(s) do not exist");
 
-    $sed->calculate_edit_distance();
+    $sed->calculate_edit_distance(0);
 
     cmp_deeply($sed->{DISTANCE_HASH}, \%expected_hash, "Check Distance Hash contains the correct data");
     is($sed->do_output_files_exist(), 1, "Check that output file(s) do exist");
