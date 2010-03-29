@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm,v 1.4 2009/12/29 06:51:56 rajas Exp $
+# $cmuPDL: Sed.pm,v 1.5 2010/03/27 04:15:48 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -267,6 +267,10 @@ sub new {
 
 ## 
 # Returns true if the output file specified in the constructor already exists
+#
+# @param self: The object container
+#
+# @return 1 if output files exist, 0 otherwise
 ##
 sub do_output_files_exist {
 
@@ -282,7 +286,11 @@ sub do_output_files_exist {
 
 
 ##
-# Returns the distance file
+# Returns a file containing the distance matrix
+# 
+# @param self: The object container
+# 
+# @return The file containing the distance matrix
 #
 sub get_distance_matrix_file {
 

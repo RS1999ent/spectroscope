@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.26 2010/01/03 06:40:13 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.27 2010/02/05 18:45:44 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -703,47 +703,6 @@ sub get_root_node_given_global_id {
     my $root_node_name = $structured_graph->{ROOT}->{NAME};
     return $root_node_name;
 }
-
-
-##
-# Returns a structured graph representation of a request-flow
-# graph given its global ID.
-#
-# @param self: The object container
-# @param global_id: The global ID
-#
-# @return: A pointer to a hash that contains the root node and a pointer to a hash 
-# containing the graph structure.  Specifically,
-#    container = { ROOT,
-#                  NODE_LIST
-#
-# Node list contains a pointer to a hash, where each element is a node keyed by its ID.
-# Specifically: 
-# 
-#   node id => {NAME => string,
-#               CHILDREN => \@array containing NODE IDs of children,
-#               ID => node_id}
-##               
-#sub get_req_structure_given_global_id {
-#
-#    assert(scalar(@_) == 2);
-#    my ($self, $global_id) = @_;
-#    
-#    my $global_id_to_local_id_hash = $self->{GLOBAL_ID_TO_LOCAL_ID_HASH};
-#    my ($local_id, $snapshot, $filename_idx) = split(/,/, $global_id_to_local_id_hash->{$global_id});
-#    my $graph = $self->$_get_local_id_indexed_request($local_id,
-#                                                      $snapshot,
-#                                                      $filename_idx);
-##
-#
-#    
-#    my $graph_container_hash_ptr = $self->$_build_graph_structure($graph,
-#                                                                  \%node_name_hash);
-#
-#    #print Dumper %$graph_container_hash_ptr;
-#
-#    return $graph_container_hash_ptr;
-#}
 
 
 1;

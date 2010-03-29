@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.13 2009/12/21 20:32:02 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.14 2010/03/27 04:15:48 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -43,19 +43,9 @@ my @g_snapshot0_files;
 # The file(s) containing DOT requests from the problem period(s)
 my @g_snapshot1_files;
 
-# If clustering is enabled, these parameters will be used as the 
-# parameters for the clustering algorithm
-my %g_clustering_params = ( MIN_K => 15,
-                            MAX_K => 30,
-                            K_INTERVAL => 5);
-
 # Allow user to skip re-converting the input DOT files to the
 # format required for this program, if this has been done before.
 my $g_reconvert_reqs = 0;
-
-# Allow user to "skip" clustering and simply group requests by
-# structure
-my $g_pass_through = 0;
 
 # The module for converting requests into MATLAB compatible format
 # for use in the clustering algorithm
@@ -64,22 +54,11 @@ my $g_create_clustering_input;
 # The module for parsing requests
 my $g_parse_requests;
 
-
 # Whether or not to bypass SeD calculation. If bypassed, 
 # "fake" SeD values will be inserted and the (actual) SeD calculation
 # will not be performed
 my $g_bypass_sed = 0;
 
-# The names of the files that must be returned by the convert data script
-#my %converted_req_names => (MATLAB_INPUT_VECTOR => "",
-#                            MAPPING_FROM_INPUT_VECTOR_TO_GLOBAL_IDS => "",
-#                            MAPPING_FROM_GLOBAL_IDS_TO_LOCAL_ID => "",
-#                           DISTANCE_MATRIX => "");
-
-#my %clustering_output_names => (CENTERS => "",
-#                                ASSIGNMENTS => "",
-#                                DISTANCES => "");
-                                    
 
 #### Main routine #########
 
@@ -128,25 +107,11 @@ undef $g_parse_requests;
 undef $g_create_clustering_input;
 
 
-##
-# Actually cluster the requests
-##
-if ($g_pass_through) {
-    my $pass_through_module = new PassThrough($g_convert_reqs_output_dir, 
-                                              $g_convert_reqs_output_dir);
-    
-    $pass_through_module->cluster();
-} else {
-    # Clustering not supported yet!
-    assert(0);
-}
 
-# Get changed edges
-#compare_edge_distributions("$g_convert_reqs_output_dir/s0_edge_based_indiv_latencies.dat",
-#                           "$g_convert_reqs_output_dir/s1_edge_based_indiv_latencies.dat",
-#                           "$g_convert_reqs_output_dir/global_req_edge_columns.dat",
-#                           "$g_convert_reqs_output_dir/edge_distribution_comparisons.dat");
-                           
+# Only "Pass through clustering" is currently supported
+my $pass_through_module = new PassThrough($g_convert_reqs_output_dir, 
+                                          $g_convert_reqs_output_dir);    
+$pass_through_module->cluster();
 
 my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
                                          \@g_snapshot0_files,
@@ -172,11 +137,6 @@ sub parse_options {
 	GetOptions("output_dir=s"              => \$g_output_dir,
 			   "snapshot0=s{1,10}"         => \@g_snapshot0_files,
 			   "snapshot1:s{1,10}"         => \@g_snapshot1_files,
-			   "min_k=i"                   => \$g_clustering_params{MIN_K},
-			   "max_k=i"                   => \$g_clustering_params{MAX_K},
-			   "k_interval=i",             => \$g_clustering_params{K_INTERVAL},
-			   "best_only+"                => \$g_clustering_params{BEST_ONLY},
-			   "pass_through+"             => \$g_pass_through,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
                "bypass_sed+"               => \$g_bypass_sed);
 
@@ -186,16 +146,6 @@ sub parse_options {
         exit(-1);
     }
 
-    # Make sure that user does not specify "best_only" and "pass_through"
-    if (defined $g_clustering_params{BEST_ONLY} 
-        && defined $g_pass_through) {
-        print_usage();
-        exit(-1);
-    }
-
-    # If the user does not specify best_only or pass_through, he must
- 
-
     $g_convert_reqs_output_dir = "$g_output_dir/convert_data";
     system("mkdir -p $g_convert_reqs_output_dir");
 }
@@ -204,23 +154,16 @@ sub parse_options {
 # Prints usage for this perl script
 #
 sub print_usage {
-    print "usage: spectroscope.pl --output_dir, --snapshot0, --snapshot1, --min_k\n" .
-		"\t--max_k, --k_interval, --best_only --pass_through --dont_reconvert_reqs\n"; 
+    print "usage: spectroscope.pl --output_dir, --snapshot0, --snapshot1\n" .
+		"\t--dont_reconvert_reqs --bypass_sed\n"; 
     print "\n";
     print "\t--output_dir: The directory in which output should be placed\n";
     print "\t--snapshot0: The name(s) of the dot graph output containing requests from\n" .
         "\t the non-problem snapshot(s).  Up to 10 non-problem snapshots can be specified\n";
 	print "\t--snapshot1: The name(s) of the dot graph output containing requests from\n" . 
         "\t the problem snapshot(s).  Up to 10 problem snapshots can be specified. (OPTIONAL)\n";
-	print "\t--min_k: The minimum number of clusters to explore (OPTIONAL)\n";
-	print "\t--max_k: The maximum number of clusters to explore (OPTIONAL)\n";
-	print "\t--k_interval: The increment step between min_k and max_k (OPTIONAL)\n";
-	print "\t--best_only: Optional parameter indicating whether the output should\n" .
-        "\t contain only results for the 'best' clustering, or for all\n" .
-        "\t clusters explored (OPTIONAL)\n";
     print "\t--reconvert_reqs: Re-indexes and reconverts requests for\n" .
           "\t fast access and MATLAB input (OPTIONAL)\n";
-	print "\t--pass_through: Skips the clustering step (OPTIONAL)\n";
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
 }
 
