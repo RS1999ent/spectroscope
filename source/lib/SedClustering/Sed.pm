@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: Sed.pm,v 1.5 2010/03/27 04:15:48 rajas Exp $
+# $cmuPDL: Sed.pm,v 1.6 2010/03/29 22:47:27 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -28,6 +28,12 @@ use Data::Dumper;
 ##
 # Loads file specified in $self->{INPUT_FILE} into
 # a hash and saves this hash in $self->{INPUT_ARRAY}
+#
+# $self->{INPUT_FILE} should contain lines of the form:
+#   <number> <number> <string>
+#
+# The string should consist of space seperated numbers.
+# For example: 1 1000 3 4
 #
 # @param self: The object container
 ##
@@ -126,13 +132,11 @@ my $_calculate_edit_distance_inner_loop = sub {
 # strings is stored in $self->{DISTANCE_HASH};
 #
 # @param self: The object container
-# @param bypass_sed: If set to 1, placeholder values for the sed will be
-# inserted and the actual sed calculation will be skipped
 ##
 my $_calculate_edit_distance_internal = sub {
 
-    assert(scalar(@_) == 2);
-    my ($self, $bypass_sed) = @_;
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
     
     assert(defined $self->{INPUT_ARRAY});
     my $input_array_ref = $self->{INPUT_ARRAY};
@@ -147,9 +151,9 @@ my $_calculate_edit_distance_internal = sub {
         my @item1 = split(' ', $input_array_ref->[$i]);
         for (my $j = $i; $j < scalar(@{$input_array_ref}); $j++) {
 
-            if ($bypass_sed == 1) {
+            if ($self->{BYPASS_SED} == 1) {
                 # Don't go through trouble of calculating SeD.  Just insert fake
-                # placeholder values, as SeD will not be used for anything usefl
+                # placeholder values, as SeD will not be used for anything useful
                 $distance_hash{$i+1}{$j+1} = 1;
                 next;
             }
@@ -242,13 +246,15 @@ my $_load_distance_file = sub {
 #
 # @param input_file: Each line of the input file is a string.  Individual
 # elements of the string must be seperated by spaces.
-# @param output_file: The distance between different strings is written to this
+# @param distance_file: The distance between different strings is written to this
 # file.  This file is formated in matlab sparse matrix format.
+# @param bypass_sed: > 0 if 'mock values' should be inserted instead of 
+# edit distances
 ##
 sub new {
-    assert(scalar(@_) == 3);    
+    assert(scalar(@_) == 4);    
 
-    my ($proto, $input_file, $distance_file) = @_;
+    my ($proto, $input_file, $distance_file, $bypass_sed) = @_;
 
     my $class = ref($proto) || $proto;
     
@@ -259,6 +265,8 @@ sub new {
 
     $self->{DISTANCE_HASH} = undef;
     $self->{INPUT_ARRAY} = undef;
+
+    $self->{BYPASS_SED} = $bypass_sed;
     
     bless($self, $class);
     return $self;
@@ -306,44 +314,47 @@ sub get_distance_matrix_file {
 # and writes the results out to the distance_matrix_file specified in the object
 # constructor.
 #
-# @param input_file: Each line of the input file is a string.  Individual
-# elements of the string must be separated by spaces.
-# @param output_file: The distance between different strings is written to this
-# file.  The output file is formated in matlab sparse matrix format.
-# Specifically, it is of the form i, j: <distance>.  Where i corresponds to the
-# string at line in the input file and j corresponds to the string at line j in
-# the input file.
+# @param self: The object container
 #
 # @param self: The object contaienr
-# @param bypass_sed: If set, "fake" SeD values will be inserted
-#  and the actual (slow) SeD calculation will be skipped
 ##
-sub calculate_edit_distance {
+sub calculate_all_edit_distances {
     
-    assert(scalar(@_) == 2);
-    my ($self, $bypass_sed) = @_;
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
 
     $self->$_load_input_file();
-    $self->$_calculate_edit_distance_internal($bypass_sed);
+    $self->$_calculate_edit_distance_internal();
     $self->$_print_edit_distance();
 
+    # This hash is no longer needed, since all edit distances
+    # have been computed and are stored in $self->{DISTANCE_HASH}
+    $self->{INPUT_ARRAY} = undef;
 }
 
 
 ##
-# Returns the edit distance between two strings.  If the distance
-# matrix betwen strings is not yet loaded into memory, this function
-# will attempt to load it from the distance_file specified
-# in the object constructor.  If this file does not exist, an assert
-# will be trigerred.
-# 
+# Returns the edit distance between two strings.  
+#
+# Two modes of operation are supported.  
+#
+#   1)If edit distances for all items have already been calcualted, this
+#   function loads the distance file containign them from disk, if necessary,
+#   and returns the pre-computed distance.  The distance file is kept in memory
+#   until this object is destroyed.
+#
+#   2)If edit distances have not been calculated, this functions calculates the
+#   distance 'on demand' by loading the data in $self->{INPUT_FILE} into memory
+#   and using the strings it contains.  $self->{INPUT_FILE} is retained in
+#   memory until "calculate_all_edit_distances()" is called, or this object is
+#   destroyed.
 #
 # @param s1_index: The index of the first string in the input file
 # @param s2_index: The index of the 2nd string in the input file
 #
 # @return: The distance between the two strings
 #
-# Note that the indices are numbered starting at 1.
+# @note The indices are numbered starting at 1.
 ##
 sub get_sed {
  
@@ -353,15 +364,34 @@ sub get_sed {
    # assert that s1_index and s2_index are 1-indexed
    assert($s1_index > 0 && $s2_index > 0);
 
-    if(!defined $self->{DISTANCE_HASH}) {
+   # Might have already computed all of the edit distances, but just not loaded
+   # the file into $self->{DISTANCE_HASH}
+    if (!defined $self->{DISTANCE_HASH} && -e $self->{DISTANCE_FILE}) {
         $self->$_load_distance_file();
     }
 
-    my $retval = (defined $self->{DISTANCE_HASH}->{$s1_index}{$s2_index})?
-        $self->{DISTANCE_HASH}->{$s1_index}{$s2_index}: 
-        $self->{DISTANCE_HASH}->{$s2_index}{$s1_index};
+   # Case where all of the edit distances have already been computed
+   if (defined $self->{DISTANCE_HASH}) {
+       my $retval = (defined $self->{DISTANCE_HASH}->{$s1_index}{$s2_index})?
+           $self->{DISTANCE_HASH}->{$s1_index}{$s2_index}: 
+           $self->{DISTANCE_HASH}->{$s2_index}{$s1_index};
+       
+       assert(defined $retval);
+       return $retval;
+   } 
 
-    assert(defined $retval);
+   # Case where all of the edit distances have not been pre-calculated.
+   # User wishes to calculate edit distance "on demand."
+   if (!defined $self->{INPUT_ARRAY}) { 
+       $self->$_load_input_file();
+   }
 
-    return $retval;
+   my @item1 = split(' ', $self->{INPUT_ARRAY}->[$s1_index - 1]);
+   my @item2 = split(' ', $self->{INPUT_ARRAY}->[$s2_index - 1]);
+   print "Performing on-demand SeD calculation for offsets: ($s1_index, $s2_index)\n";
+   my $retval = $self->$_calculate_edit_distance_inner_loop(\@item1, \@item2);
+   assert(defined $retval);
+   return $retval;
 }
+
+1;       

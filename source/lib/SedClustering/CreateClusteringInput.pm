@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.12 2009/09/08 23:51:31 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.13 2009/09/27 19:45:20 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -327,26 +327,6 @@ my $_handle_requests = sub {
 
 
 ## 
-# Computes the distance between the unique string
-# representation of requests.
-#
-# @param self: The object container
-# @param bypass_sed: If set, SeD calculation will be skipped 
-# and "fake" SeD values inserted
-my $_compute_distance_matrix = sub {
-
-    assert(scalar(@_) == 2);
-    my ($self, $bypass_sed) = @_;
-
-    my $sed_obj = new Sed($self->{INPUT_VECTOR_FILE},
-                          $self->{DISTANCE_MATRIX_FILE});
-
-    $sed_obj->calculate_edit_distance($bypass_sed);
-    undef $sed_obj;
-};
-
-
-## 
 # Removes the files created by this perl modue, if they already
 # exist in the output directory.
 ##
@@ -371,11 +351,6 @@ my $_remove_existing_files = sub {
 			or die("Could not delete old $self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}\n");
 	}
 
-    if(-e $self->{DISTANCE_MATRIX_FILE}) {
-        print "Deleting old $self->{DISTANCE_MATRIX_FILE}\n";
-        system("rm -f $self->{DISTANCE_MATRIX_FILE}") == 0
-            or die("Could not delete old $self->{DISTANCE_MATRIX_FILE}");
-    }
 };
 
 
@@ -422,9 +397,6 @@ sub new {
     # The first valid alphabet counter
     $self->{ALPHABET_COUNTER} = 1;
     
-    # Specifies the distance between requests for clustering
-    $self->{DISTANCE_MATRIX_FILE} = "$output_dir/input_vector_distance_matrix.dat";
-    
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
@@ -442,8 +414,7 @@ sub do_output_files_exist {
 
     if( -e($self->{INPUT_VECTOR_FILE}) &&
         -e($self->{ALPHABET_MAPPING_FILE}) &&
-        -e($self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}) &&
-        -e($self->{DISTANCE_MATRIX_FILE})) {
+        -e($self->{INPUT_VEC_TO_GLOBAL_IDS_FILE})) {
         return 1;
     }
     return 0;
@@ -460,23 +431,19 @@ sub do_output_files_exist {
 ##        
 sub create_clustering_input {
 
-    assert(scalar(@_) == 2);
-    my ($self, $bypass_sed) = @_;
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
 
     $self->$_remove_existing_files();
 
     $self->$_handle_requests($self->{SNAPSHOT0_FILES_REF}, 0);
-    if(defined $self->{SNAPSHOT1_FILES_REF}) {
+    if (defined $self->{SNAPSHOT1_FILES_REF}) {
         $self->$_handle_requests($self->{SNAPSHOT1_FILES_REF}, 1);
     }
     
     # Print out files representing the converted data
     $self->$_print_string_rep_hash();
     $self->$_print_alphabet_mapping();
-
-    # Calculate the string-edit distance
-    $self->$_compute_distance_matrix($bypass_sed);
-
 }		
 
 

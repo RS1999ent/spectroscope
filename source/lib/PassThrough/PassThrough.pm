@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PassThrough.pm,v 1.3 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: PassThrough.pm,v 1.4 2009/08/06 17:33:20 rajas Exp $
 ##
 # This perl modules implements a "ClusteringPassThrough"
 # that is, it generates as many clusters as input
@@ -49,8 +49,8 @@ my $_remove_existing_files = sub {
 #### API functions ###############################
 
 sub new {
-    assert(scalar(@_) == 3);
-    my ($proto, $input_dir, $output_dir) = @_;
+    assert(scalar(@_) == 4);
+    my ($proto, $input_dir, $output_dir, $sed) = @_;
 
     my $class = ref($proto) || $proto;
 
@@ -58,7 +58,7 @@ sub new {
 
     # Input files
     $self->{INPUT_VECTOR_FILE} = "$input_dir/input_vector.dat";
-    $self->{INPUT_DISTANCE_MATRIX_FILE} = "$input_dir/input_vector_distance_matrix.dat";
+    $self->{INPUT_DISTANCE_MATRIX_FILE} = $sed->get_distance_matrix_file();
 
     # Output files
     $self->{CLUSTER_DISTANCE_MATRIX_FILE} = "$input_dir/clusters_distance_matrix.dat";
@@ -107,9 +107,11 @@ sub cluster {
         $offset++;
     }
 
-    system("cp $self->{INPUT_DISTANCE_MATRIX_FILE} " .
-           "$self->{CLUSTER_DISTANCE_MATRIX_FILE}") == 0
-           or die "Could not create $self->{CLUSTER_DISTANCE_MATRIX_FILE}";
+    if( -e $self->{INPUT_DISTANCE_MATRIX_FILE}) { 
+        system("cp $self->{INPUT_DISTANCE_MATRIX_FILE} " .
+               "$self->{CLUSTER_DISTANCE_MATRIX_FILE}") == 0
+               or die "Could not create $self->{CLUSTER_DISTANCE_MATRIX_FILE}";
+    }
 
     close($input_vector_fh);
     close($output_fh);

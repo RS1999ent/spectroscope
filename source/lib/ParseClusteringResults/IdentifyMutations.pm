@@ -51,8 +51,6 @@ my $RESPONSE_TIME_MASK = 0x100;
 # 
 # @param this_cluster_info_hash_ref: A reference to hash containing statistics
 #  about the cluster for which we are determining the mutation type
-# @param structural_mutations_exist: Whether or not structural mutations have
-#  been identified to exist for this dataset.
 # @param sensitivity: The threshold factor increase or decrease in requests
 # belonging to a cluster that will force this function to mark it as a
 # structural mutation or originating cluster
@@ -61,28 +59,25 @@ my $RESPONSE_TIME_MASK = 0x100;
 ##
 sub find_mutation_type  {
 
-    assert(scalar(@_) == 3);
-    my ($this_cluster_info_hash_ref, $structural_mutations_exist, $total_reqs) = @_;
+    assert(scalar(@_) == 2);
+    my ($this_cluster_info_hash_ref, $total_reqs) = @_;
     
     my $snapshot_freqs = $this_cluster_info_hash_ref->{FREQUENCIES};
     my $mutation_type = $NO_MUTATION;
     my $avg_reqs_per_snapshot = $total_reqs/2;
 
     # Identify structural mutations and originating clusters
-    if($structural_mutations_exist) {
 #        if($snapshot_freqs->[1] > 1) {
 #            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
-        if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 10) {
-            $mutation_type = $STRUCTURAL_MUTATION;
-        }
-
+    if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 10) {
+        $mutation_type = $STRUCTURAL_MUTATION;
+    }
+    
 #        if ($snapshot_freqs->[0] > 1) {
 #        if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
-        if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 10) {
-            $mutation_type = $ORIGINATING_CLUSTER;
-        }
+    if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 10) {
+        $mutation_type = $ORIGINATING_CLUSTER;
     }
-
 
     # Identify response-time mutations
     my $hypothesis_test_results = $this_cluster_info_hash_ref->{RESPONSE_TIME_STATS};
@@ -143,7 +138,7 @@ sub identify_originators_and_cost {
         
         if (($mutation_info->{MUTATION_TYPE} & $MUTATION_TYPE_MASK) == $STRUCTURAL_MUTATION) {
 
-            my $weight; # Graph distance betweeen originator and mutation
+            my $weight; # Edit distance betweeen originator and mutation
             my %unweighted_mutation_cost;
             my %weighted_mutation_cost;
 
@@ -175,7 +170,7 @@ sub identify_originators_and_cost {
                 # Enforce 1-N relationship explicitly
                 if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
                     print "$o_id cannot be an originating cluster of $m_id\n" .
-                        "\t $m_id has increased in freq more than $o_id has decreased\n";
+                        "\t because $m_id has increased in freq more than $o_id has decreased\n";
                     next;
                 }
 
@@ -198,9 +193,9 @@ sub identify_originators_and_cost {
             
             # Insert ranked list into information about this cluster
             $mutation_info->{DETAILS} = { WEIGHTED_ORIGINATORS => \%weighted_mutation_cost,
-                                                           TOTAL_WEIGHTED_COST => $total_weighted_cost,
-                                                           UNWEIGHTED_ORIGINATORS => \%unweighted_mutation_cost,
-                                                           TOTAL_UNWEIGHTED_COST => $total_unweighted_cost};
+                                          TOTAL_WEIGHTED_COST => $total_weighted_cost,
+                                          UNWEIGHTED_ORIGINATORS => \%unweighted_mutation_cost,
+                                          TOTAL_UNWEIGHTED_COST => $total_unweighted_cost};
         }
 
         if (($mutation_info->{MUTATION_TYPE} & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
@@ -320,7 +315,6 @@ sub determine_if_structural_mutations_exist {
 
     print "Determining if structural mutations exist\n";
     my $results = $test->get_hypothesis_test_results();
-    print Dumper($results);
 
     return $results->{1}->{REJECT_NULL};
 }
@@ -363,15 +357,14 @@ sub identify_mutations {
     my ($cluster_info_hash_ref, $sed, $output_dir, $total_reqs) = @_;
     
     # Run Chi-Squared test here to tell if we should label *anything* as a structural mutation
-    my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
-                                                                             $sed,
-                                                                             $output_dir);
+    #my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
+    #                                                                         $sed,
+    #                                                                         $output_dir);
 
     # Identify mutation types
     for my $key (keys %{$cluster_info_hash_ref}) {
         my %mutation_info;
         $mutation_info{MUTATION_TYPE} = find_mutation_type($cluster_info_hash_ref->{$key}, 
-                                                           $structural_mutations_exist, 
                                                            $total_reqs);
         $cluster_info_hash_ref->{$key}->{MUTATION_INFO} = \%mutation_info;
     }

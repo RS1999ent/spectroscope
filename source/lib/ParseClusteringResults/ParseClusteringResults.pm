@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v $
+# $cmuPDL$
 
 ##
 # This Perl module implements routines for parsing the results
@@ -879,16 +879,19 @@ my $_print_all_clusters = sub {
 #
 # @param print_graphs_class: The class used to print and
 # obtain information about the input request-flow gaphs
-
+#
+# @param sed_class: An object that can be used to retrieve edit
+#  distances betwee nclusters
+#
 # @param output_dir: The directory in which the output files 
 # should be placed
 ##
 sub new {
 
-    assert(scalar(@_) == 4);
+    assert(scalar(@_) == 5);
 
     my ($proto, $convert_data_dir, 
-        $print_graphs_class, $output_dir) = @_;
+        $print_graphs_class, $sed_class, $output_dir) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
@@ -899,11 +902,7 @@ sub new {
     $self->{OUTPUT_DIR} = $output_dir;
     $self->{PRINT_GRAPHS_CLASS} = $print_graphs_class;
 
-    # @bug: Abstraction violation, this class should not know that
-    # the clusters are the same as the input vector
-    $self->{SED_CLASS} = new Sed("$convert_data_dir/input_vector.dat", 
-                                 "$convert_data_dir/clusters_distance_matrix.dat");
-    assert($self->{SED_CLASS}->do_output_files_exist() == 1);
+    $self->{SED_CLASS} = $sed_class;
     
     # Hashes that will be maintained.  These hashes
     # are loaded from text files.
@@ -998,6 +997,7 @@ sub print_ranked_clusters {
     # First print graphs of originators and information
     # all of the clusters
     $self->$_print_all_clusters();
+
     $self->$_print_graphs_of_originating_clusters($self->{ORIGINATING_CLUSTERS_GRAPH_FILE});
     $self->$_print_graphs_of_non_interesting_clusters($self->{NOT_INTERESTING_GRAPH_FILE});
     $self->$_print_graphs_of_clusters_with_response_time_changes($unweighted_mutation_hash,
@@ -1007,7 +1007,6 @@ sub print_ranked_clusters {
                                                                 $self->{UNWEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE});
     $self->$_print_combined_ranked_graphs_of_mutations($unweighted_mutation_hash,
                                                        $self->{UNWEIGHTED_COMBINED_GRAPH_FILE});
-
 
     # Print graphs w/weights
     $self->$_print_graphs_of_clusters_with_structural_mutations($weighted_mutation_hash,
