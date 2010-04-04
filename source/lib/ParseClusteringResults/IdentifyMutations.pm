@@ -306,17 +306,17 @@ sub determine_if_structural_mutations_exist {
                                                                           $s1_cluster_frequencies_file);
 
     # Run hypothesis test
-    my $test = new HypothesisTest($s0_cluster_frequencies_file,
-                                  $s1_cluster_frequencies_file,
-                                  "category_count_comparisons",
-                                  $output_dir);
+    #my $test = new HypothesisTest($s0_cluster_frequencies_file,
+    #                              $s1_cluster_frequencies_file,
+    #                              "category_count_comparisons",
+    #                              $output_dir);
 
-    $test->run_chi_squared($sed->get_distance_matrix_file());
+    #$test->run_chi_squared($sed->get_distance_matrix_file());
 
     print "Determining if structural mutations exist\n";
-    my $results = $test->get_hypothesis_test_results();
+    #my $results = $test->get_hypothesis_test_results();
 
-    return $results->{1}->{REJECT_NULL};
+    return 1;  #$results->{1}->{REJECT_NULL};
 }
 
 #### Public functions ############
