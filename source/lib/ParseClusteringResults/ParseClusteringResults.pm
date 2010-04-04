@@ -26,7 +26,7 @@ use Data::Dumper;
 use SedClustering::Sed;
 use StatisticalTests::HypothesisTest;
 use ParseClusteringResults::CreateHypothesisTestInputs 
-    qw[create_edge_latency_comparison_files create_response_time_comparison_files];
+    qw[add_latency_comparison get_comparison_results];
 use ParseClusteringResults::IdentifyMutations
     qw[identify_mutations get_mutation_type is_response_time_change is_structural_mutation
        is_originating_cluster is_mutation];
@@ -37,9 +37,9 @@ use ParseClusteringResults::IdentifyMutations
 # Import value of DEBUG if defined
 no define DEBUG =>;
 
-# Fast-path calculation of the number of statistical tests that can be run.  Used
-# for USENIX'10 experiments
-use define CALC_NUM_TESTS_SKIPPED_ONLY => 0;
+# Number of requests that a cluster must contain for this
+# module to print a boxplot for it
+my $G_BOXPLOT_THRESHOLD = 10;
 
 
 #### Private functions ############
@@ -108,111 +108,6 @@ my $_print_boxplots = sub {
     binmode IMG;
     print IMG $gd->png;
     close(IMG);
-};
-
-
-##
-# Computes statistics about edges seen for a set of requests,
-# given their global IDs.
-# 
-# @param self: The object container
-# @param global_ids_ptr: A pointer to an array of global ids
-# @param cluster_id: The cluster to which the global IDs belong
-#
-# @return a pointer to a hash of information about each edge in the
-# cluster.  This hashed is structured as follows: 
-#
-# edge_name = { REJECT_NULL => <value>,
-#               P_VALUE => <value>,
-#               AVGS => \@array,
-#               STDDEVS => \@array}
-# where edge_name is "src_node_name->dest_node_name"
-##
-my $_compute_edge_statistics = sub {
-    assert(scalar(@_) == 3);
-
-    my $self = shift;
-    my $global_ids_ptr = shift;
-    my $cluster_id = shift;
-
-    my $print_graphs = $self->{PRINT_GRAPHS_CLASS};
-
-    my $output_dir = $self->{INTERIM_OUTPUT_DIR};
-
-    my %edge_name_to_row_num_hash;
-    my %row_num_to_edge_name_hash;
-
-    # Make sure the output directory exists
-    system("mkdir -p $output_dir");
-
-    my $s0_edge_file = "$output_dir/s0_cluster_$cluster_id" . 
-                       "_edge_latencies.dat";
-    my $s1_edge_file = "$output_dir/s1_cluster_$cluster_id" .
-                       "_edge_latencies.dat";
-    my $comparison_results_file = "$output_dir/$cluster_id" .
-                                   "_edge_comparisons.dat";
-    
-    CreateHypothesisTestInputs::create_edge_latency_comparison_files($global_ids_ptr, $s0_edge_file, $s1_edge_file,
-                                                                     \%edge_name_to_row_num_hash, \%row_num_to_edge_name_hash,
-                                                                     $self->{PRINT_GRAPHS_CLASS});
-
-    my $hypothesis_test = new HypothesisTest($s0_edge_file, 
-                                             $s1_edge_file, 
-                                             $cluster_id . "_edge_comparisons", 
-                                             $output_dir);
-    $hypothesis_test->run_kstest2();
-
-    my $edge_info = $hypothesis_test->get_hypothesis_test_results(\%row_num_to_edge_name_hash);
-        
-    return $edge_info;
-};
-
-
-## 
-# Runs a hypothesis test comparing the distributions of the response times of
-# requests in a cluster
-#
-# @param self: The object container
-# @param s0_times_array_ref: Response times from snapshot0
-# @param s1_times_array_ref: Response times from snapshot1
-# @param cluster_id: THe cluster id
-#
-# @return: A pointer to a hash of statistics about the response times of requests 
-# from each snapshot.  This hash is structured as follows: 
-#
-# $reponse_time_stats{REJECT_NULL   => <value>,
-#                     P_VALUE       => <value>,
-#                     AVGS          => \@array
-#                     STDDEVS       => \@array}
-##
-my $_compute_response_time_statistics = sub {
-    
-    assert(scalar(@_) == 4);
-    my ($self, $s0_times_array_ref, $s1_times_array_ref, $cluster_id) = @_;
-
-    my $output_dir = $self->{INTERIM_OUTPUT_DIR};
-    my $s0_response_times_file = "$output_dir/s0_cluster_$cluster_id" . 
-                                  "_response_time_comparisons.dat";
-    my $s1_response_times_file = "$output_dir/s1_cluster_$cluster_id" . 
-                                  "_response_time_comparisons.dat";
-    my $comparison_results_file = "$output_dir/$cluster_id" . 
-                                     "_response_time_comparisons.dat";
-
-    CreateHypothesisTestInputs::create_response_time_comparison_files($s0_times_array_ref,
-                                                                      $s1_times_array_ref,
-                                                                      $s0_response_times_file, 
-                                                                      $s1_response_times_file);
-    
-    my $hypothesis_test = new HypothesisTest($s0_response_times_file,
-                                             $s1_response_times_file,
-                                             "$cluster_id" . "_response_time_comparisons",
-                                             $output_dir);
-
-    $hypothesis_test->run_kstest2();
-    
-    my $response_time_stats = $hypothesis_test->get_hypothesis_test_results();
-    print Dumper($response_time_stats);
-    return $response_time_stats->{1};
 };
 
 
@@ -333,16 +228,12 @@ my $_compute_cluster_info = sub {
     # Get the total number of requests in each dataset
     my $total_requests = $graph_info->get_snapshot_frequencies();
 
-    # This is executed only if Spectroscope is run to only output whether or not the statistical
-    # tests it intends to run are possible
-    # if (CALC_NUM_TESTS_SKIPPED_ONLY) { # Ugh, perl define does not work like C defines
-    my $small_clusters = 0;
-    my $num_response_time_tests_not_run = 0;
-    my $num_kstest_reqs = 0;
-    my $num_chi_squared_reqs = 0;
-    my $total_s0_reqs = 0;
-    my $total_s1_reqs = 0;
-    #}
+    # Create a new hypothesis test object for comparing edge latencies and
+    # response times within clusters
+    my $latency_comparisons = new HypothesisTest("latency_comparisons", $self->{INTERIM_OUTPUT_DIR});
+
+    my %edge_name_to_row_num_hash;
+    my %row_num_to_edge_name_hash;
 
     foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
         print "Processing statistics for Cluster $key...\n";
@@ -355,47 +246,20 @@ my $_compute_cluster_info = sub {
         $cluster_probs[0] = $self->$_compute_cluster_prob($cluster_freqs->[0], $total_requests->[0]);
         $cluster_probs[1] = $self->$_compute_cluster_prob($cluster_freqs->[1], $total_requests->[1]);
 
-        $total_s0_reqs += $cluster_freqs->[0];
-        $total_s1_reqs += $cluster_freqs->[1];
-
-
-        # This code is used only when determining how many statistical tests
-        # must be skipped
-        if (CALC_NUM_TESTS_SKIPPED_ONLY) {
-                
-            if ($cluster_freqs->[0] <= 5 || $cluster_freqs-[1] <= 5) {
-                $small_clusters++;
-                $num_chi_squared_reqs += $cluster_freqs->[0] + $cluster_freqs->[1];
-            } 
-
-            # Matlab help suggests that kstest2 produces good results when this
-            # condition is false
-            if($cluster_freqs->[0] == 0 || 
-               $cluster_freqs->[1] == 0 ||
-               (($cluster_freqs->[0]*$cluster_freqs->[1])/($cluster_freqs->[0] + $cluster_freqs->[1]) < 4)) {
-                $num_response_time_tests_not_run++;
-
-                $num_kstest_reqs += $cluster_freqs->[0] + $cluster_freqs->[1];
-            }
-            next;
-        }
-
         # Compute response time statistics
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
-        my $response_time_stats = 
-            $self->$_compute_response_time_statistics($response_times->{S0_RESPONSE_TIMES},
-                                                     $response_times->{S1_RESPONSE_TIMES},
-                                                     $key);
+        my $comparison_id = 
+            CreateHypothesisTestInputs::add_latency_comparison($key, \@global_ids, $response_times,
+                                                               \%edge_name_to_row_num_hash, \%row_num_to_edge_name_hash,
+                                                               $latency_comparisons, $graph_info);
 
-            
         # Print boxplots of reponse times        
-        $self->$_print_boxplots($key, 
-                                $response_times->{S0_RESPONSE_TIMES}, 
-                                $response_times->{S1_RESPONSE_TIMES});
-        undef $response_times;
-
-        # Compute edge latency statistics
-        my $edge_latency_stats = $self->$_compute_edge_statistics(\@global_ids, $key);
+        if($cluster_freqs->[0] > $G_BOXPLOT_THRESHOLD || $cluster_freqs->[1] > $G_BOXPLOT_THRESHOLD) {
+            $self->$_print_boxplots($key, 
+                                    $response_times->{S0_RESPONSE_TIMES}, 
+                                    $response_times->{S1_RESPONSE_TIMES});
+        }
+        $response_times = undef;
 
         # Fill in the %this_cluster_info_hash
         my %this_cluster_info;
@@ -406,38 +270,27 @@ my $_compute_cluster_info = sub {
 
         $this_cluster_info{FREQUENCIES} = $cluster_freqs;
         $this_cluster_info{LIKELIHOODS} = \@cluster_probs;
-        
-        $this_cluster_info{RESPONSE_TIME_STATS} = $response_time_stats;
-        $this_cluster_info{EDGE_LATENCY_STATS} = $edge_latency_stats;
-
-        $this_cluster_info{ID} = $key;
-    
+        $this_cluster_info{ID} = $key;        
+        $this_cluster_info{COMPARISON_ID} = $comparison_id;
         $cluster_info_hash{$key} = \%this_cluster_info;
     }
 
-    if (CALC_NUM_TESTS_SKIPPED_ONLY) {
-        my $num_clusters = keys %{$cluster_assignment_hash};
-        
-        printf "Number of response-time tests not run: %d (%3.2f)\n",
-        $num_response_time_tests_not_run, $num_response_time_tests_not_run/$num_clusters;
-        printf "Number of requests for which tests not run: %d (%3.2f)\n",
-        $num_kstest_reqs, ($num_kstest_reqs/($total_s0_reqs + $total_s1_reqs));
+    # Run hypothesis test for comparing latencies and add results to hash
+    $latency_comparisons->run_kstest2();
+    foreach my $key (sort {$a <=> $b} keys %cluster_info_hash) {
 
-        printf "Number of clusters with less than 5 requests: %d (%3.2f)\n",
-        $small_clusters, $small_clusters/$num_clusters;
-
-        printf "Number of reuqests for which chi^2 test not run: %d (%3.2f)\n",
-        $num_chi_squared_reqs, ($num_chi_squared_reqs/($total_s0_reqs + $total_s1_reqs));
-
-        printf "Number of s0 reqs: %d.  Number of s1 reqs: %d\n.  Total reqs: %d",
-        $total_s0_reqs, $total_s1_reqs, ($total_s0_reqs + $total_s1_reqs);
-        
-        return;
+        my $this_cluster_info = $cluster_info_hash{$key};
+        my $comparison_stats = 
+            CreateHypothesisTestInputs::get_comparison_results($this_cluster_info->{COMPARISON_ID},
+                                                               \%row_num_to_edge_name_hash,
+                                                               $latency_comparisons);
+        $this_cluster_info->{RESPONSE_TIME_STATS} = $comparison_stats->{RESPONSE_TIME_STATS};
+        $this_cluster_info->{EDGE_LATENCY_STATS} = $comparison_stats->{EDGE_LATENCY_STATS};
     }
     
     IdentifyMutations::identify_mutations(\%cluster_info_hash, $self->{SED_CLASS}, 
                                           $self->{INTERIM_OUTPUT_DIR},
-                                          $total_s0_reqs + $total_s1_reqs);
+                                          $total_requests->[0] + $total_requests->[1]);
     
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
     
@@ -493,8 +346,6 @@ my $_create_mutation_hash = sub {
                                              MUTATION_TYPE => "Response time change",
                                              ID => $id
                                              };
-            
-
         }
     }
 
@@ -770,8 +621,6 @@ my $_print_graphs_of_originating_clusters = sub {
             my $this_cluster_info = $cluster_info_hash_ref->{$key};
 
         }
-
-        
     }
 
     close($output_fh);
@@ -981,12 +830,12 @@ sub print_ranked_clusters {
     if(!defined $self->{CLUSTER_INFO_HASH}) {
         $self->$_compute_cluster_info();
 
-        # If all that we want to do is calculate the 
-        # number of statistical tests that must be skipped,
-        # just return
-        if (CALC_NUM_TESTS_SKIPPED_ONLY) {
-            return;
-        }
+#        # If all that we want to do is calculate the 
+#        # number of statistical tests that must be skipped,
+#        # just return
+#        if (CALC_NUM_TESTS_SKIPPED_ONLY) {
+#            return;
+#        }
     }
 
     my $unweighted_mutation_hash = 

@@ -1,4 +1,4 @@
-% $cmuPDL: run_hypothesis_tests., v$
+% $cmuPDL: run_hypothesis_tests.m,v 1.1 2010/04/03 05:50:23 rajas Exp $
 
 %%
 % This matlab script is a wrapper for running hypothesis tests on several
@@ -12,13 +12,12 @@
 %  comparison
 % @param hyp_test: Name of the matlab script that will actually perform the hypothesis test
 %%
-function [] = run_hypothesis_tests( comparisons_file, hyp_test)
+function [] = run_hypothesis_tests( comparison_file, hyp_test)
 
-     [null_file, test_file, output_file, stats_file] = textread(comparisons_file, "%s %s %s %s\n");
+     [null_file, test_file, output_file, stats_file] = textread(comparison_file, '%s %s %s %s\n');
      
-
-     for i=[1:size(null_file, 1)],
-        hyp_test(null_file{i}, test_file{i}, output_file{i}, stats_file{i});
+     for i=1:size(null_file, 1),
+        feval(hyp_test, null_file{i}, test_file{i}, output_file{i}, stats_file{i});
      end
 end
 

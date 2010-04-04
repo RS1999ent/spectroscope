@@ -1,4 +1,4 @@
-% $cmuPDL: compare_edges.m,v 1.1 2009/10/08 09:34:39 rajas Exp $
+% $cmuPDL: compare_edges.m,v 1.2 2009/12/06 12:45:04 rajas Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edge latencies passed into it and returns whether they are the same.  The
@@ -26,8 +26,9 @@
 % @param s1_edge_latencies: Edge latencies from the first
 %        shapshot.  This is in MATLAB sparse file format.
 % @param output_file.dat: Where the output of this script will be placed
+% @param stats_file: Unused by this script
 %%
-function [] = compare_edges(s0_file, s1_file, output_file)    
+function [] = compare_edges(s0_file, s1_file, output_file, stats_file)    
 
     s0_data = load(s0_file);
 
@@ -64,9 +65,9 @@ function [] = compare_edges(s0_file, s1_file, output_file)
         end
         
         if(isempty(s0_edge_latencies) && isempty(s1_edge_latencies)),
-          % This must be an RPC edge
-          fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
-                  i, 0, 0, 0, 0, 0, 0);
+   
+          % fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
+          %        i, 0, 0, 0, 0, 0, 0);
 
            continue;
         end

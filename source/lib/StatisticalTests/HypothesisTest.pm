@@ -3,24 +3,38 @@
 # cmuPDL: HypothesisTest.pm, v $
 
 ##
-# This perl module expects as input two matlab sparse matrix files, where each
-# row represents a distribution of data that should be compared to the
-# corresponding row in the other file using a hypothesis test.  Note that rows
-# of the input file MUST be one indexed.  Once the hypothesis test is performed,
-# this function can return the results in a hash reference, which is structured
-# as follows:
+# This perl module object performs multiple statistical 'comparisons.'  Each
+# comparison compares a set of null distributions against a set of test
+# distributions and determine their are statistically significant differences.
+# Two statistical tests are currently supported: the Kolomogrov-Smirnov test and
+# the X^2 Goodness of Fit test.
+#
+# A comparison may represent a group of related distributions that are to be
+# compared.  Adding a comparison requires specifying two input files, specified
+# in MATLAB sparse data format.
+#
+# For categorical distributions, each row should represent a category, the first
+# column the count, and the second a unique name.  Specifically, each row should
+# look like: <count> <name>
+#
+# For continuous distributions, each row should represent a distribution, and
+# each column a unique value.  Data must be specified in MATLAB sparse data
+# format.  Rows are 1-indexed.  <row>, <col> <value>
+#
+# Once the hypothesis tests are performed, this function will return the results
+# in for each comparison in a hash reference structured as follows.  name is
+# either the row number, or a name assigned to the row number, which can be
+# specified by the caller.
+#
 # hyp_test_results_hash{name} = { REJECT_NULL   => <value>,
 #                                 P_VALUE       => <value>,
 #                                 AVGS           => \@array
 #                                 STDDEVS       => \@array }
 #
-# Each value in the hash reference presents the results from one row of the
-# input files.  The name parameter is either the row number, or a "name."  The
-# row number is 1-indexed.  The name is obtained from an input hash that maps
-# row numbers to names.  Note that The AVG field and STDDEVS field contain
-# references to an array.  The first value is the average/standard deviation
-# from the first file, whereas the second represents the average/standard
-# deviation from the second file.  
+# Note that The AVGS field and STDDEVS field contain references to an array.
+# The first value is the average/standard deviation from the null distribution,
+# whereas the second represents the average/standard deviation from the test
+# distribution.
 ##
 
 package HypothesisTest;
@@ -35,96 +49,173 @@ use Test::Harness::Assert;
 # Import value of DEBUG if defined
 no define DEBUG =>;
 
+
+#### Private functions #############
+
+##
+# Creates a file that lists the filenames containing distribution data for each
+# comparison that is to be run.  Also write lthe output filenames, into which
+# results for each comparison will be written, to this file.
+#
+# @param self: The object container
+##
+my $_create_comparison_file = sub {
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    open (my $fh, ">$self->{COMPARISON_FILE}") or 
+        die "Could not open $self->{COMPARISON_FILE} for writing: $!\n";
+    
+    foreach (@{$self->{COMPARISON_INFO}}) {
+        my $comparison_hash = $_;
+
+        printf $fh "%s %s %s %s\n", 
+        $comparison_hash->{NULL_DISTRIB_FILE},
+        $comparison_hash->{TEST_DISTRIB_FILE},
+        $comparison_hash->{OUTPUT_FILE},
+        $comparison_hash->{STATS_FILE};        
+    }
+
+    close($fh);
+};
+        
+
 #### API functions #################
 
 ##
 # Creates a new HypothesisTests class.
 #
-# @param file1: Each row contains samples that should be compared to the
-# corresponding row in file 2 in MATLAB sparse matrix format
-# @param file2: Each row contains samples that should be compared to the
-# corresponding row in file 1 in MATLAB sparse matrix format
-# @name: A unique name for these set of tests
-# @param output_dir: Output about the results of each hypothesis tests 
+# @param output_dir: Output about the results of each comparison
 # will be stored in this directory
+# @param name: The name of this group of comparisons
 ## 
 sub new {
-
-    assert(scalar(@_) == 5);
-    my($proto, $ref_file, $test_file, $name, $output_dir) = @_;
+    assert(scalar(@_) == 3);
+    my($proto, $name, $output_dir) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
 
-    $self->{REF_DISTRIB_FILE} = $ref_file;
-    $self->{TEST_DISTRIB_FILE} = $test_file;
-    $self->{OUTPUT_FILE} = "$output_dir/$name" . "_hypothesis_test_results.dat";
-    $self->{REF_GRAPH_FILE} = "$output_dir/$name" . "_ref_distrib_graph.eps";
-    $self->{TEST_GRAPH_FILE} = "$output_dir/$name" . "_test_distrib_graph.eps";
-    $self->{STATS_FILE} = "$output_dir/$name" . "_stats.dat";
     $self->{HAVE_TESTS_BEEN_RUN} = 0;
-
+    $self->{OUTPUT_DIR} = $output_dir;
+    
+    my $time = time();
+    $self->{COMPARISON_FILE} = "$output_dir/hypothesis_test_comp_list_" . "$name" . ".dat";
+    
+    $self->{COMPARISON_INFO} = ();
     bless($self, $class);
 
     return $self;
 }
 
-
-## 
-# Runs the Kolomov-Smirgnov test to compare corresponding data distributions in
-# each row of the input files.  The standard significance level of alpha=0.05 is
-# used.
-#
-# The output of the hypothesis tests run is placed in $self->{OUTPUT_FILE}.
-# Each row of the output file corresponds to the test run for the corresponding
-# rows in the reference and test distribution files.  Each hypothesis test
-# results row is formated as follows: 
-#   edge_row_number, reject null?, p_value, avgs, stddevs
+##
+# Returns the output directory
 #
 # @param self: The object container
+##
+sub get_output_dir {
+    assert(scalar(@_) == 1);
+    my ($self) = @_;
+
+    return $self->{OUTPUT_DIR};
+}
+
+
+##
+# Adds a new comparison between a set of null distributions and a set of test
+# distributions.
 #
+# @param self: The object container
+# @param null_distribution_file: File containing data from the null distribution  
+# @param test_distribution_file: File containing data from the test distribution
+# @param name: Name of this comparison
+#
+# @return an integer ID that identifies this comparison
+## 
+sub add_comparison {
+    assert(scalar(@_) == 4);
+    my ($self, $null_file, $test_file, $name) = @_;
+
+    my %comparison_hash = (NULL_DISTRIB_FILE => $null_file,
+                           TEST_DISTRIB_FILE => $test_file,
+                           OUTPUT_FILE => "$self->{OUTPUT_DIR}/$name" . "_hypothesis_test_results.dat",
+                           STATS_FILE => "$self->{OUTPUT_DIR}/$name" . "_stats.dat"
+                           );
+
+    push(@{$self->{COMPARISON_INFO}}, \%comparison_hash);
+    
+    return (scalar(@{$self->{COMPARISON_INFO}}) - 1);
+}
+
+
+##
+# Runs the Kolomov-Smirgnov test to compare corresponding data distributions in each
+# comparison.  The standard significance level of alpha=0.05 is used.
+#
+# Each data file should contain data in the format
+#    <row>, <col>, <datapoint>.  
+# Corresponding rows in the null and test distribution for each comparison are
+# evaluated by the hypothesis test.
+#
+# For each comparison, an output file is created in $self->{OUTPUT_DIRECTORY}.  It
+# is formated as follows: 
+#   row_number, reject null?, p_value, avgs, stddevs
+#
+# @param self: The object container
 ##
 sub run_kstest2 {
     
     assert(scalar(@_) == 1);
     my ($self) = @_;
 
+    # First create file stating files involved in each of the comparisons
+    $self->$_create_comparison_file();
+
     my $curr_dir = getcwd();
+
     chdir '../lib/StatisticalTests';
+
+    system("matlab -nojvm -nosplash -nodisplay -r \"run_hypothesis_tests(\'$self->{COMPARISON_FILE}\', \'compare_edges\'); quit\"".
+           "|| matlab -nodisply -r \"run_hypothesis_tests(\'$self->{COMPARISON_FILE}\', \'compare_edges\'); quite\"") == 0
+           or die("Could not run Matlab kstest2");
     
-    system("matlab -nojvm -nosplash -nodisplay -r \"compare_edges(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\'); quit\"".
-           "|| matlab -nodisplay -r \"compare_edges(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$self->{OUTPUT_FILE}\'); quit\"") == 0
-           or die ("Could not run Matlab compare_edges script\n");
-
     chdir $curr_dir;
-
     $self->{HAVE_TESTS_BEEN_RUN} = 1;
 }
 
 
 ##
-# Runs the X^2 test.  Input data should be categorical and in each row of the input
-# files should be in the following format.
-#   id count name
-# id is the id of the category; count is the number of elements contained; name is
-# a field that is used to combine multiple categories if each does not contain enough elements.
+# Runs the X^2 test.  All comparisons should be categorical and each file should contain
+# data in the following format: 
+#   <id> <count> <name>
+# id is the id of the category; count is the number of elements contained; name
+# is a field that is used to combine multiple categories if each does not
+# contain enough elements.
+#
+# For each comparison, an output file is created in $self->{OUTPUT_DIR}.  It is formated
+# as follows
+#  1 reject null? p_value, 0, 0
 #
 # @param self: The object container
 # @param sed_file: A matrix specifying similarities values between categories
 ##
 sub run_chi_squared {
+
     assert(scalar(@_) == 2);
     my ($self, $sed_file) = @_;
 
+    # First create file stating the files involved in each of the comparisons
+    $self->$_create_comparison_file();
+
     my $curr_dir = getcwd();
+
     chdir '../lib/StatisticalTests';
 
-    system("matlab -nojvm -nosplash -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$sed_file\', \'$self->{OUTPUT_FILE}\', \'$self->{STATS_FILE}\'); quit\"".
-           "|| matlab -nodisplay -r \"compare_categories(\'$self->{REF_DISTRIB_FILE}\', \'$self->{TEST_DISTRIB_FILE}\', \'$sed_file\', \'$self->{OUTPUT_FILE}\', \'$self->{STATS_FILE}\'); quit\"") == 0
-           or die("Could not run Matlab compare_categories script\n");
-    
-    chdir $curr_dir;
+    system("matlab -nojvm -nosplash -nodisplay -r \"run_hypothesis_tests(\'$self->{COMPARISON_FILE}\', \'compare_categories\', $self->{SED_FILE}\'); quit\"".
+           "|| matlab -nodisplay -r \"run_hypothesis_tests(\'$self->{COMPARISON_FILE}\', \'compare_categories\', $self->{SED_FILE}\'); quit\"") == 0
+           or die("could not run Matlab to compare categories");
 
+    chdir $curr_dir;
     $self->{HAVE_TESTS_BEEN_RUN} = 1;
 }
 
@@ -133,6 +224,7 @@ sub run_chi_squared {
 # Returns results of running the selected hypothesis test.
 #
 # @param self: The object container
+# @param ID: The comparison ID for which hypothesis test results are to be returned
 # @param row_nums_to_names: A hash reference mapping row numbers to "names"
 # (optional)
 #
@@ -150,22 +242,24 @@ sub run_chi_squared {
 ## 
 sub get_hypothesis_test_results {
 
-    assert(scalar(@_) == 1 || scalar(@_) == 2);
-    my ($self, $row_nums_to_names);
+    assert(scalar(@_) == 2 || scalar(@_) == 3);
+    my ($self, $id, $row_nums_to_names);
 
-    if(scalar(@_) == 1) {
-        ($self) = @_;
+    if(scalar(@_) == 2) {
+        ($self, $id) = @_;
     } else {
-        ($self, $row_nums_to_names) = @_;
+        ($self, $id, $row_nums_to_names) = @_;
     }
 
-    my %hyp_test_results_hash;
+    my $comparison_hash = $self->{COMPARISON_INFO}->[$id];
     
-    open(my $hyp_test_results_fh, "<$self->{OUTPUT_FILE}")
+    open(my $hyp_test_results_fh, "<$comparison_hash->{OUTPUT_FILE}")
         or die ("Could not open $self->{OUTPUT_FILE}: $!\n");
 
     my $uncomparable = 0;
     my $rows = 0;
+    my %hyp_test_results_hash;
+
     while (<$hyp_test_results_fh>) {
         # This regexp must match the output specified by _run_hypothesis_test()
         if(/(\d+) (\d+) ([\-0-9\.]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+) ([0-9\.-]+)/) {
@@ -195,7 +289,7 @@ sub get_hypothesis_test_results {
                                                STDDEVS        => \@stddevs };
         } else {
             print "get_hypothesis_test_results(): Cannot parse line in" .
-                " $self->{OUTPUT_FILE}\n $_";
+                " $comparison_hash->{OUTPUT_FILE}\n $_";
             assert(0);
         }
     }

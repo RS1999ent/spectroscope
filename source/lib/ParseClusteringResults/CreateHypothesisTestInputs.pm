@@ -3,9 +3,10 @@
 # $cmuPDL: CreateHypothesisTestInputs.pm
 
 ## 
-# Contains Helper functions for ParseClusteringResults.pm.  The functions in
-# this file create files containing edge latency distributions and response-time
-# distributions.
+# Helper file for ParseClusteringResults.pm.  This module implements functions
+# necessary to identify response-time mutations, and for those, identify which
+# edges contribution to the response-time change.  Also, contains functions
+# necessary to run a chi^2 test to determine whether structural mutations exist.
 ##
 
 package CreateHypothesisTestInputs;
@@ -18,7 +19,7 @@ use List::Util qw[max];
 use Data::Dumper;
 
 require Exporter;
-our @EXPORT_OK = qw(create_response_time_comparison_files create_edge_latency_comparison_files);
+our @EXPORT_OK = qw(add_latency_comparison get_comparison_results);
 
 
 ##### Global constants ########################
@@ -42,20 +43,20 @@ no define DEBUG =>;
 # @return: The row number to use for this edge
 ##
 sub get_edge_row_num {
-
+    
     assert(scalar(@_) == 4);
     my ($edge_name, $edge_row_num_hash, 
         $reverse_edge_row_num_hash, $current_max_row_num) = @_;
-
+    
     if(!defined $edge_row_num_hash->{$edge_name}) {
         my $row_num = $current_max_row_num + 1;
         
         if (DEBUG) {print "get_edge_row_num(): $edge_name $row_num\n"};
-
+        
         $edge_row_num_hash->{$edge_name} = $row_num;
         $reverse_edge_row_num_hash->{$row_num} = $edge_name;
     }
-
+    
     return $edge_row_num_hash->{$edge_name};
 }
 
@@ -75,19 +76,17 @@ sub get_edge_row_num {
 sub get_edge_col_num {
     assert(scalar(@_) == 2);
     my ($edge_name, $edge_col_num_hash) = @_;
-
+    
     if(!defined $edge_col_num_hash->{$edge_name}) {
         $edge_col_num_hash->{$edge_name} = 1;
     }
-   
+    
     my $col_num = $edge_col_num_hash->{$edge_name};
     $edge_col_num_hash->{$edge_name}++;
-
+    
     return $col_num;
 }
-    
 
-###### API functions #######################
 
 ##
 # Creates files that specify that data distributions of edges for the global_ids
@@ -95,42 +94,40 @@ sub get_edge_col_num {
 #
 # @note row and column numbers are 1-indexed.
 #
+# @param s0_fh: File to which s0 edge latency distributions should be written
+# @param s1_fh: File to which s1 edge latency distributions should be written
 # @param global_ids_ptr: Edge latencies for requests specified by these IDs will be compared
-# @param s0_edge_file: This file will be populated with a sparse matrix of s0 edge latencies
-# @param s1_edge_file: This file will be populated with a sparse matrix of s1 edge latencies
 # @param edge_name_to_row_num_hash_ptr: This will map edge names to their assigned row number
 # @param row_num_to_edge_name_hash_ptr: This will map row numbers to their assigned column
 # @param print_graphs: Object for yielding information about the request-flow graphs
 ##
-sub create_edge_latency_comparison_files {
-
+sub write_edge_latency_distributions {
+    
     assert(scalar(@_) == 6);
-    my ($global_ids_ptr, $s0_edges_file, $s1_edges_file, 
-        $edge_name_to_row_num_hash_ptr, $row_num_to_edge_name_hash_ptr,
+    my ($s0_fh, $s1_fh, 
+        $global_ids_ptr,
+        $edge_name_to_row_num_hash_ptr, 
+        $row_num_to_edge_name_hash_ptr,
         $print_graphs ) = @_;
-
+    
     my %col_num_hash;    
+    
+    my $max_row_num = max(sort {$a <=> $b} keys %{$row_num_to_edge_name_hash_ptr});
+    my @fhs = ($s0_fh, $s1_fh);
 
-    open(my $s0_edge_fh, ">$s0_edges_file") or 
-        die "create_edge_comparison_files(): could not open $s0_edges_file: $!\n";
-    open(my $s1_edge_fh, ">$s1_edges_file") or 
-        die "create_edge_comparison_files(): could not $s1_edges_file: $!\n";;
 
-    my @fhs = ($s0_edge_fh, $s1_edge_fh);
-
-    my $max_row_num = 0;
     foreach (@$global_ids_ptr) {
         my @global_id = ($_);
-
+        
         my $snapshot_ptr = $print_graphs->get_snapshots_given_global_ids(\@global_id);
         my $edge_info = $print_graphs->get_request_edge_latencies_given_global_id($global_id[0]);
         
         foreach my $key (keys %$edge_info) {
             my $row_num = get_edge_row_num($key, $edge_name_to_row_num_hash_ptr, 
-                                                    $row_num_to_edge_name_hash_ptr, $max_row_num);
+                                           $row_num_to_edge_name_hash_ptr, $max_row_num);
             $max_row_num = max($row_num, $max_row_num);
             my $edge_latencies = $edge_info->{$key};
-
+            
             foreach(@$edge_latencies) {
                 my $col_num = get_edge_col_num($key,\%col_num_hash);
                 my $filehandle = $fhs[$snapshot_ptr->[0]];
@@ -138,9 +135,6 @@ sub create_edge_latency_comparison_files {
             }
         }
     }
-
-    close($fhs[0]);
-    close($fhs[1]);
 }
 
 
@@ -157,31 +151,21 @@ sub create_edge_latency_comparison_files {
 # @param s0_response_times_file: File in which response-times for s0 will be placed
 # @param s1_response_times_file: File in which response-times for s1 will be placed
 ##
-sub create_response_time_comparison_files {
+sub write_response_time_distributions {
     
     assert(scalar(@_) == 4);
-    my ($s0_response_times_array_ref, $s1_response_times_array_ref, 
-        $s0_response_times_file, $s1_response_times_file) = @_;
-
-    open(my $fh, ">$s0_response_times_file")
-        or die ("_create_response_time_comparison_files(): Could not open "
-                . "$s0_response_times_file.  $!\n");
-
+    my ($s0_fh, $s1_fh,
+        $s0_response_times_array_ref, $s1_response_times_array_ref) = @_;
+    
     for (my $i = 0; $i < @{$s0_response_times_array_ref}; $i++) {
         # Row and column numbers start at 1!
-        printf $fh  "%d %d %f\n", 1, $i+1, $s0_response_times_array_ref->[$i];
+        printf $s0_fh  "%d %d %f\n", 1, $i+1, $s0_response_times_array_ref->[$i];
     }
-    close($fh);
-
-    open($fh, ">$s1_response_times_file")
-        or die ("_create_response_time_comparison_files(): Could not open "
-                . "$s1_response_times_file.  $!\n");
-
+    
     for (my $i = 0; $i < @{$s1_response_times_array_ref}; $i++) {
         # Row and column numbers start at 1!
-        printf $fh "%d %d %f\n", 1, $i+1, $s1_response_times_array_ref->[$i];
+        printf $s1_fh "%d %d %f\n", 1, $i+1, $s1_response_times_array_ref->[$i];
     }
-    close($fh);
 }
 
 
@@ -194,36 +178,130 @@ sub create_response_time_comparison_files {
 # @param s1_cluster_frequencies_file: Name of input file to create for s1
 ##
 sub create_cluster_frequency_comparison_files {
-
+    
     assert(scalar(@_) == 3);
     my ($cluster_info_hash_ref,
         $s0_cluster_frequencies_file, 
         $s1_cluster_frequencies_file) = @_;
     
-           
     open (my $s0_fh, ">$s0_cluster_frequencies_file")
         or die ("create_cluster_frequency_comparison_files(): Could not open "
                 . "$s0_cluster_frequencies_file");
-
+    
     open (my $s1_fh, ">$s1_cluster_frequencies_file")
         or die ("create_cluster_frequency_comparison_files(): Could not open "
                 . "$s1_cluster_frequencies_file");
-
+    
     foreach my $id (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
         printf $s0_fh "%d %d %s\n",
         $id, 
         $cluster_info_hash_ref->{$id}->{FREQUENCIES}->[0],
         $cluster_info_hash_ref->{$id}->{ROOT_NODE};
-
+        
         printf $s1_fh "%d %d %s\n",
         $id, 
         $cluster_info_hash_ref->{$id}->{FREQUENCIES}->[1],
         $cluster_info_hash_ref->{$id}->{ROOT_NODE};
     }
-        
+    
     close($s0_fh);
     close($s1_fh);
 }
+
+
+#### API functions #############
+
+##
+# Given a hypothesis test object and select information about a cluster, this
+# function adds a comparison within the hypothesis test for comparing the
+# response time distribution of requests from snapshot0 versus that of snapshot1
+# and for comparing corresponding edge latencies
+#
+# @param cid: The cluster ID
+# @param global_ids: A reference to an array of global IDs of cluster requests
+# @param response_times: A hash reference to 2 arrays of response times for S0 & S1
+# @param edge_name_to_row_num: Mapping from edge names to row numbers
+# @param row_num_to_edge_name: Mapping from row numbers to edge names
+# @param hyp_test: A hypothesis test object
+# @param graph_info: An object of type PrintGraphs
+# @param directory to which distribution data should be written
+#
+# @return: A comparison ID for retrieving results of the hypothesis tests
+##
+sub add_latency_comparison {
+
+    assert(scalar(@_) == 7);
+    my ($cluster_id, $global_ids, $response_times,
+        $edge_name_to_row_num, $row_num_to_name,
+        $hyp_test, $graph_info) = @_;
+
+    my $output_dir = $hyp_test->get_output_dir();
+
+    my $s0_file = "$output_dir/$cluster_id" . "_s0_times.dat";
+    my $s1_file = "$output_dir/$cluster_id" . "_s1_times.dat";
+    
+    open(my $s0_fh, ">$s0_file") or die("Could not open $s0_file");
+    open(my $s1_fh, ">$s1_file") or die("could not open $s1_file");
+
+    # Write response time distributions to the files 
+    write_response_time_distributions($s0_fh, $s1_fh, 
+                                      $response_times->{S0_RESPONSE_TIMES},
+                                      $response_times->{S1_RESPONSE_TIMES});
+    if (!defined $row_num_to_name->{1}) {
+        $row_num_to_name->{1} = "RESPONSE_TIMES";
+        $edge_name_to_row_num->{RESPONSE_TIMES} = 1;
+    }
     
 
+    # Write edge latency distributions to the tile
+    write_edge_latency_distributions($s0_fh, $s1_fh,
+                                     $global_ids, $edge_name_to_row_num,
+                                     $row_num_to_name, $graph_info);
+
+    close($s0_fh);
+    close($s1_fh);
+
+    # Add comparison to hypothesis test object
+    my $comparison_id = $hyp_test->add_comparison($s0_file, $s1_file, "$cluster_id" . "_times");
+
+    return $comparison_id;
+}
+
+
+##
+# Returns results of comparing response times and edge latencies to see if they
+# are statistically different
+#
+# @param comp_id: The ID of the statistical comparison set
+# @param row_num_to_name: Mapping between row numbers and names
+# @param hyp_test: The hypothesis test object containing the results.  The
+# caller must have already called the fn necessary to compute the results
+# 
+# @return a hash reference containing two elements: 
+#    RESPONSE_TIME_STATS => { REJECT_NULL => <value>,
+#                             P_VALUE     => <value>,
+#                             AVGS        => \@array,
+#                             STDDEVS     => \@array }
+#
+#   EDGE_LATENCY_STATS   => { REJECT_NULL => <value>,
+#                             P_VALUE     => <value>,
+#                             AVGS        => \@array,
+#                             STDDEVS     => \@array } 
+##
+sub get_comparison_results {
+    assert(scalar(@_) == 3);
+    my ($comp_id, $row_num_to_name, $hyp_test) = @_;
+
+    my $temp = $hyp_test->get_hypothesis_test_results($comp_id, $row_num_to_name);
+    
+    my %results;
+    
+    $results{RESPONSE_TIME_STATS} = $temp->{RESPONSE_TIMES};
+    delete $temp->{RESPONSE_TIMES};
+    
+    $results{EDGE_LATENCY_STATS} = $temp;
+
+    return \%results;
+}
+    
 1;
