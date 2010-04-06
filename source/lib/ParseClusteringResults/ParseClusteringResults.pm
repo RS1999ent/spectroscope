@@ -232,9 +232,6 @@ my $_compute_cluster_info = sub {
     # response times within clusters
     my $latency_comparisons = new HypothesisTest("latency_comparisons", $self->{INTERIM_OUTPUT_DIR});
 
-    my %edge_name_to_row_num_hash;
-    my %row_num_to_edge_name_hash;
-
     foreach my $key (sort {$a <=> $b} keys %$cluster_assignment_hash) {
         print "Processing statistics for Cluster $key...\n";
 
@@ -248,6 +245,8 @@ my $_compute_cluster_info = sub {
 
         # Compute response time statistics
         my $response_times = $graph_info->get_response_times_given_global_ids(\@global_ids);
+        my %edge_name_to_row_num_hash;
+        my %row_num_to_edge_name_hash;
         my $comparison_id = 
             CreateHypothesisTestInputs::add_latency_comparison($key, \@global_ids, $response_times,
                                                                \%edge_name_to_row_num_hash, \%row_num_to_edge_name_hash,
@@ -272,7 +271,13 @@ my $_compute_cluster_info = sub {
         $this_cluster_info{LIKELIHOODS} = \@cluster_probs;
         $this_cluster_info{ID} = $key;        
         $this_cluster_info{COMPARISON_ID} = $comparison_id;
+
+        # Only need to store this temporarilty, until hypothesis test results are returned
+        $this_cluster_info{ROW_NUM_TO_EDGE_NAME_HASH} = \%row_num_to_edge_name_hash;
+
         $cluster_info_hash{$key} = \%this_cluster_info;
+
+
     }
 
     # Run hypothesis test for comparing latencies and add results to hash
@@ -282,8 +287,10 @@ my $_compute_cluster_info = sub {
         my $this_cluster_info = $cluster_info_hash{$key};
         my $comparison_stats = 
             CreateHypothesisTestInputs::get_comparison_results($this_cluster_info->{COMPARISON_ID},
-                                                               \%row_num_to_edge_name_hash,
+                                                               $this_cluster_info->{ROW_NUM_TO_EDGE_NAME_HASH},
                                                                $latency_comparisons);
+        delete $this_cluster_info->{ROW_NUM_TO_EDGE_NAME_HASH};
+
         $this_cluster_info->{RESPONSE_TIME_STATS} = $comparison_stats->{RESPONSE_TIME_STATS};
         $this_cluster_info->{EDGE_LATENCY_STATS} = $comparison_stats->{EDGE_LATENCY_STATS};
     }

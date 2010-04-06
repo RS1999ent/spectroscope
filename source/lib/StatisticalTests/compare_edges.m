@@ -1,4 +1,4 @@
-% $cmuPDL: compare_edges.m,v 1.2 2009/12/06 12:45:04 rajas Exp $
+% $cmuPDL: compare_edges.m,v 1.3 2010/04/04 03:58:11 rajas Exp $
 %%
 % This matlab script compares the edge latency distributions of the
 % edge latencies passed into it and returns whether they are the same.  The
@@ -65,9 +65,10 @@ function [] = compare_edges(s0_file, s1_file, output_file, stats_file)
         end
         
         if(isempty(s0_edge_latencies) && isempty(s1_edge_latencies)),
-   
-          % fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
-          %        i, 0, 0, 0, 0, 0, 0);
+          % This might be RPC call/reply for which an RPC call/RPC reply
+          % instrumentation point pair was not added in the code
+          fprintf(outfid, '%d %d %3.2f %3.2f %3.2f %3.2f %3.2f\n', ...
+                  i, 0, 0, 0, 0, 0, 0);
 
            continue;
         end
