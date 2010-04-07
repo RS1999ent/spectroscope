@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.29 2010/03/30 19:49:06 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.30 2010/04/06 09:22:03 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -234,43 +234,30 @@ my $_overlay_request_info = sub {
             my $src_node_name = $node_name_hash{$src_node_id};
             my $dest_node_name = $node_name_hash{$dest_node_id};
             
-            my $found = 0;
-            for my $key (keys %{$edge_info_hash}) {
-                my $edge_name = $key;
+            my $edge_name = "$src_node_name->$dest_node_name";
 
-                if (DEBUG) {
-                    print "looking for: $src_node_name->$dest_node_name  $edge_name\n";
-                }
-
-                if("$src_node_name->$dest_node_name" eq $edge_name) {
-                    
-                    my $color;
-                    $color = ($edge_info_hash->{$key}->{REJECT_NULL} == 1)?"red":"black";
-                    
-                    # Print info for this edge; round average and stddev of latency to nearest integer
-                    my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
-                                                 $color, 
-                                                 $edge_info_hash->{$key}->{P_VALUE}, 
-                                                 int($edge_info_hash->{$key}->{AVGS}->[0] + .5),
-                                                 int($edge_info_hash->{$key}->{AVGS}->[1] + .5),
-                                                 int($edge_info_hash->{$key}->{STDDEVS}->[0] + .5),
-                                                 int($edge_info_hash->{$key}->{STDDEVS}->[1] + .5));
-                    
-                    $line =~ s/\[.*\]/$edge_info_line/g;
-                    $mod_graph_array[$i] = $line;
-                    $found = 1;
-
-                    if (DEBUG) {print "found: $edge_name\n"};
-                    last;
-                }
-            }
-            if($found == 0) {
-                print "Request edge: $src_node_name->$dest_node_name not found!\n";
+            if(!defined $edge_info_hash->{$edge_name}) {
                 print "$request\n";
+                print "Request edge: $edge_name not found\n";
                 assert(0);
             }
+                    
+            my $color;
+            $color = ($edge_info_hash->{$edge_name}->{REJECT_NULL} == 1)?"red":"black";
+                    
+            # Print info for this edge; round average and stddev of latency to nearest integer
+            my $edge_info_line = sprintf("[color=\"%s\" label=\"p:%3.2f\\n   a: %dus / %dus\\n   s: %dus / %dus\"\]",
+                                         $color, 
+                                         $edge_info_hash->{$edge_name}->{P_VALUE}, 
+                                         int($edge_info_hash->{$edge_name}->{AVGS}->[0] + .5),
+                                         int($edge_info_hash->{$edge_name}->{AVGS}->[1] + .5),
+                                         int($edge_info_hash->{$edge_name}->{STDDEVS}->[0] + .5),
+                                         int($edge_info_hash->{$edge_name}->{STDDEVS}->[1] + .5));
+            
+            $line =~ s/\[.*\]/$edge_info_line/g;
+            $mod_graph_array[$i] = $line;
         }
-    }    
+    }
     
     my $mod_graph = join("\n", @mod_graph_array);
 
