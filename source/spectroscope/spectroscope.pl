@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.15 2010/03/29 22:47:27 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.16 2010/03/30 19:49:07 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -202,5 +202,5 @@ sub print_usage {
         "\t fast access and MATLAB input (OPTIONAL)\n";
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
     print "\t--calc_all_distances: Whether all edit distances should be pre-computed\n" .
-        "\t or calculated on demand (OPTIONAL\n";
+        "\t or calculated on demand (OPTIONAL)\n";
 }

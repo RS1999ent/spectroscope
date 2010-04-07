@@ -41,6 +41,7 @@ no define DEBUG =>;
 # module to print a boxplot for it
 my $G_BOXPLOT_THRESHOLD = 10;
 
+my $G_REQS_IN_LARGE_CLUSTERS = 10;
 
 #### Private functions ############
 
@@ -646,9 +647,11 @@ my $_print_all_clusters = sub {
     my $graph_info = $self->{PRINT_GRAPHS_CLASS};
 
     # Information about statistical tests run
-    my $response_time_test_not_run = 0;
-    my $s0_small_clusters = 0;
-    my $s1_small_clusters = 1;
+    my $num_clusters_kstest_not_run = 0;
+    my $num_reqs_kstest_not_run = 0;
+    my $num_small_clusters = 0;
+    my $num_reqs_in_small_clusters = 0;
+    my $total_reqs = 0;
 
     open (my $out_fh, ">$self->{CLUSTER_INFO_TEXT_FILE}") or 
         die "ParseClusterResults: _print_all_clusters(): could not open " .
@@ -674,37 +677,47 @@ my $_print_all_clusters = sub {
         $response_time_stats->{STDDEVS}->[0], $response_time_stats->{STDDEVS}->[1],
         $freqs->[0], $freqs->[1];
 
+
         # Gather information about the statistical tests run
-        if($response_time_stats->{P_VALUE} < 0) {
-            $response_time_test_not_run++;
+        # thest will be printed out in $self->{AGGREGATE_INFO_TEST_FILE}.
+        if ($freqs->[0] == 0 || $freqs->[1] == 0 ||
+            (($freqs->[0] * $freqs->[1])/($freqs->[0] + $freqs->[1]) < 4)) {
+            
+            # We assume that lib/StatisticalTests/HypothesisTest.pm runs 
+            # a Kolomogrov Smirnov test to identify response-time mutations.
+            # Kolomogrov Smirnov tests cannot be run if the conditions in the 
+            # above "if" are met.
+            $num_clusters_kstest_not_run++;
+            $num_reqs_kstest_not_run += $freqs->[0] + $freqs->[1];
         }
+            
+        if($freqs->[0] < $G_REQS_IN_LARGE_CLUSTERS || $freqs->[1] < $G_REQS_IN_LARGE_CLUSTERS) {
+            $num_small_clusters++;
+            $num_reqs_in_small_clusters += $freqs->[0] + $freqs->[1];
+        }
+        $total_reqs = $freqs->[0] + $freqs->[1];
         
-        if($freqs->[0] < 5) {
-            $s0_small_clusters++;
-        }
-        if($freqs->[1] < 5) {
-            $s1_small_clusters++;
-        }
     }
     close($out_fh);
 
-    # @bug: Write information on whether statistical tests were run on each cluster
-    # to this file.  Writing this information here breaks many many many abstraction
-    # layers :(
+    
     open ($out_fh, ">$self->{AGGREGATE_INFO_TEST_FILE}") or
         die "ParseClusteringResults: _print_all_clusters(): could not open " .
              "$self->{AGGREGATE_INFO_TEST_FILE}.  $!\n";             
     
     my $num_clusters = keys %{$cluster_info_hash_ref};
 
-    printf $out_fh "Number of response-time tests not run: %d (%3.2f)\n",
-    $response_time_test_not_run, $response_time_test_not_run/$num_clusters;
+    printf $out_fh "Number of clusters for which response-time mutations could not be identified: %d (%3.2f)\n",
+    $num_clusters_kstest_not_run, $num_clusters_kstest_not_run/$num_clusters;
 
-    printf $out_fh "Number of s0 clusters with less than 5 requests: %d (%3.2f)\n",
-    $s0_small_clusters, $s0_small_clusters/$num_clusters;
+    printf $out_fh "Number of requests for which response-time mutation tests could not be run: %d (%3.2f)\n\n",
+    $num_reqs_kstest_not_run, $num_reqs_kstest_not_run/$total_reqs;
 
-    printf $out_fh "Number of s1 clusters with less than 5 requests: %d (%3.2f)\n",
-    $s1_small_clusters, $s1_small_clusters/$num_clusters;
+    printf $out_fh "Number of small clusters (with less than $G_REQS_IN_LARGE_CLUSTERS requests): %d (%3.2f)\n",
+    $num_small_clusters, $num_small_clusters/$num_clusters;
+
+    printf $out_fh "Number of reqs in small clusters (with less $G_REQS_IN_LARGE_CLUSTERS requests): %d (%3.2f)\n",
+    $num_reqs_in_small_clusters, $num_reqs_in_small_clusters/$total_reqs;
 
     close($out_fh);
 
