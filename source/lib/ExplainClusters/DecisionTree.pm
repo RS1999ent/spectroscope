@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.4 2009/05/05 17:38:49 source Exp $
+# $cmuPDL: DecisionTree.pm,v 1.5 2009/08/26 21:28:36 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -216,7 +216,7 @@ my $_build_and_print_data_table = sub {
     while (-1 != (my $global_id = $cluster_info_obj->get_cluster_requests($cluster_id, \$cookie))) {
 
         my $req_string = $request_info_obj->get_global_id_indexed_request($global_id);
-        my $req_container = StructuredGraph::get_req_structure($req_string);
+        my $req_container = StructuredGraph::build_graph_structure($req_string);
         my $snapshot = $request_info_obj->get_snapshots_given_global_ids([$global_id]);
         
         if ($snapshot->[0] == 0) {
@@ -372,10 +372,11 @@ sub explain_clusters {
     my $mutated_request_id = 
         $clustering_results_obj->get_global_id_of_cluster_rep($mutated_cluster_id);
 
-    my $original_req_container =        
-        $request_info_obj->get_req_structure_given_global_id($original_request_id);
-    my $mutated_req_container = 
-        $request_info_obj->get_req_structure_given_global_id($mutated_request_id);
+    my $req_string = $request_info_obj->get_global_id_indexed_request($original_request_id);
+    my $original_req_container = StructuredGraph::build_graph_structure($req_string);
+
+    $req_string = $request_info_obj->get_global_id_indexed_request($mutated_request_id);
+    my $mutated_req_container = StructuredGraph::build_graph_structure($req_string);
 
     # Get list of nodes that match between the two graphs
     my @matching_nodes_list;
