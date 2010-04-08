@@ -1,6 +1,7 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: explain_clusters.pl,v 1.2 2009/05/05 09:11:56 source Exp $
+# $cmuPDL: explain_clusters.pl,v 1.3 2009/07/23 01:15:58 rajas Exp $
+
 ##
 # @author Raja Sambasivan
 # 
@@ -19,8 +20,11 @@ use lib '../lib';
 use define DEBUG => 0;
 
 use ParseDot::PrintRequests;
+use SedClustering::Sed;
 use ParseClusteringResults::ParseClusteringResults;
 use ExplainClusters::DecisionTree;
+
+$ENV{'PATH'} = "$ENV{'PATH'}" . ":../lib/SedClustering/";
 
 
 #### Global variables #####
@@ -60,13 +64,15 @@ my $g_convert_reqs_dir;
 ##
 sub print_usage {
     print "usage: explain_clusters.pl --spectroscope_results_dir --mutated_cluster_id\n" .
-        "\t--original_cluster_id --s0_database --s1_database --snapshot0 --snapshot1\n";
+        "\t--original_cluster_id --s0_database --s1_database --s0_graphs --s1_graphs\n";
     print "\n";
     print "\t--spectroscope_results_dir: Location of the Spectroscope results\n";
     print "\t--mutated_cluster_id: ID of the mutated cluster\n";
     print "\t--original_cluster_id: The ID of the original cluster\n";
     print "\t--s0_database: The db in which s0's low-level data resides\n";
     print "\t--s1_database: (OPT) The db in which s1's low-level data resides\n";
+    print "\t--s0_graphs: Graphs file from snapshot 0\n";
+    print "\t--s1_graphs: Graphs file from snapshot 1\n";
 }
 
 
@@ -80,8 +86,8 @@ sub parse_options {
                "original_cluster_id=s" => \$g_original_cluster_id,
                "s0_database=s" => \$g_s0_database_name,
                "s1_database:s" => \$g_s1_database_name,
-               "snapshot0=s"   => \$g_snapshot0_graphs,
-               "snapshot1:s"   => \$g_snapshot1_graphs);
+               "s0_graphs=s"   => \$g_snapshot0_graphs,
+               "s1_graphs:s"   => \$g_snapshot1_graphs);
    
 
     # Check input options
@@ -101,13 +107,20 @@ sub parse_options {
 
 parse_options();
 
+my @s0_graphs = ($g_snapshot0_graphs);
+my @s1_graphs = ($g_snapshot1_graphs);
+
 my $request_info_obj = new PrintRequests($g_convert_reqs_dir,
-                                         $g_snapshot0_graphs,
-                                         $g_snapshot1_graphs);
+                                         \@s0_graphs, \@s1_graphs);
+
+# String-edit distance might already have been computed as part of running Spectroscope
+my $g_sed = new Sed("$g_convert_reqs_dir/input_vector.dat",
+                    "$g_convert_reqs_dir/cluster_distance_matrix.dat",
+                    0);
 
 my $clustering_results_obj = new ParseClusteringResults($g_convert_reqs_dir,
-                                                        "req_difference",
                                                         $request_info_obj,
+                                                        $g_sed,
                                                         $g_spectroscope_results_dir);
 
 my $decision_tree_obj = new DecisionTree($request_info_obj,
