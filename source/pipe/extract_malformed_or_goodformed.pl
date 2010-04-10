@@ -8,6 +8,8 @@
 use strict;
 use Test::More;
 use Test::Deep::NoTest;
+use Getopt::Long;
+
 
 #### Global variables #######
 
@@ -23,6 +25,7 @@ sub parse_options {
 
 ##### Main routine ######
 
+parse_options();
 my $old_seperator = $/;
 $/ = '}';
 
