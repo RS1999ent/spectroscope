@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# cmuPDL: eval_structural_mutation_identification.pl, v $
+# $cmuPDL: eval_structural_mutation_identification.pl, v $
 
 ##
 # @author Raja Sambasivan
@@ -41,6 +41,7 @@ use warnings;
 use diagnostics;
 use Test::Harness::Assert;
 use Getopt::Long;
+use List::Util qw(min);
 
 use lib '../lib/';
 use ParseDot::DotHelper qw[parse_nodes_from_file];
@@ -55,7 +56,10 @@ my $g_combined_ranked_results_file;
 my $g_originating_clusters_file;
 
 # Hash mapping byte indexes to cluster IDs in teh originators file
-my $g_originators_byte_idx;
+my %g_originators_byte_idx;
+
+# File containing not interesting clusters
+my $g_not_interesting_clusters_file;
 
 # The mutated edge (this is the edge that 'changed' in structural mutations)
 my $g_mutated_edge;
@@ -66,7 +70,7 @@ my $g_originator_edge;
 # For each category containing structural mutations, this is the lowest ranked
 # candidate originator cluster that will be examined to see if it contains the
 # originator edge
-my $g_lowest_ranked_originator_to_examine;
+my $g_lowest_ranked_originator_to_examine = 0;
 
 
 ###
@@ -101,9 +105,9 @@ sub print_usage {
     print "\toriginators_file: File containing the originators\n";
     print "\tnot_interesting_file: File containing not interesting clusters\n";
     print "\tmutated_edge: Edge that is the root cause of the mutation\n";
-    print "\toriginator-edge: What the mutated edge originated from\n";
+    print "\toriginator_edge: What the mutated edge originated from\n";
     print "\tlowest_ranked_originator: For each mutation category, this is the lowest\n";
-    print "\t\tthat will be examined to see if it contains the originator edge\n";
+    print "\t\tthat will be examined to see if it contains the originator edge (OPTIONAL)\n";
 }
 
 
@@ -111,16 +115,17 @@ sub print_usage {
 # Get input options
 ##
 sub get_options {
-    Getoptions("combined_ranked_results_file=s"  => \$g_combined_ranked_results_file,
+
+    GetOptions("combined_ranked_results_file=s"  => \$g_combined_ranked_results_file,
                "originators_file=s"              => \$g_originating_clusters_file,
                "not_interesting_file=s"          => \$g_not_interesting_clusters_file,
                "mutated_edge=s"                  => \$g_mutated_edge,
-               "originating_edge=s"              => \$g_originating_edge,
-               "lowest_ranked_originator=d"       => \$g_lowest_ranked_originator_to_examine);
+               "originator_edge=s"              => \$g_originator_edge,
+               "lowest_ranked_originator:i"      => \$g_lowest_ranked_originator_to_examine);
 
     if (!defined $g_combined_ranked_results_file || !defined $g_originating_clusters_file
         || !defined $g_not_interesting_clusters_file || !defined $g_mutated_edge ||
-        !defined $g_originating_edge || !defined $g_lowest_ranked_originator_to_examine) {
+        !defined $g_originator_edge || !defined $g_lowest_ranked_originator_to_examine) {
         print_usage();
         exit(-1);
     }
@@ -153,7 +158,7 @@ sub compute_combined_ranked_results_stats {
 
     # Case where we have a response-time mutation --- this is a false positive
     if ($is_structural_mutation == 0) { 
-        $g_num_virtual_clusters{RESPONSE_TIME}++;
+        $g_num_virtual_clusters_false_positives{RESPONSE_TIME}++;
         $g_num_virtual_requests_false_positives{RESPONSE_TIME} += $s1_reqs;
         push(@g_combined_ranked_results_bitmap, -1);
         
@@ -178,7 +183,7 @@ sub compute_combined_ranked_results_stats {
             # Case where category contains the mutated edge and its originator(s) contain
             # what that edge looked like in the non-problem period
             $g_num_virtual_relevant_clusters++;
-            $g_num_virtual_relevant_request+= $s1_reqs;
+            $g_num_virtual_relevant_requests += $s1_reqs;
             push(@g_combined_ranked_results_bitmap, 1);
         }
     }
@@ -205,7 +210,7 @@ sub update_mutation_accounting_info {
 
 ##
 # Builds in index mapping byte offset -> location of an originating cluster in
-# $g_originating_clusters_file and stores it in $g_originators_file_idx
+# $g_originating_clusters_file and stores it in $g_originators_byte_idx
 ##
 sub build_index_on_originators_file {
     
@@ -215,7 +220,8 @@ sub build_index_on_originators_file {
     my $old_offset = 0;
 
     while(<$fh>) {
-        if (/\# \d+ R: [0-9\.]+/) {
+
+        if (/\# \d+  R: [0-9\.]+/) {
             # This is the start of a new request
 
             # Skip the 'Digraph G {' line
@@ -225,7 +231,7 @@ sub build_index_on_originators_file {
             $_ = <$fh>;            
             assert(/Cluster ID: (\d+)/);
             
-            $g_originators_file_idx{$1} = $old_offset;
+            $g_originators_byte_idx{$1} = $old_offset;
         } else {
             $old_offset = tell($fh);
         }
@@ -255,9 +261,9 @@ sub search_for_edge_in_graph {
         if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"(\w+)\" label=\"p:([-0-9\.]+)\\n.*a: ([-0-9\.]+)us \/ ([-0-9\.]+)us/) {
             my $src_node_id = "$1.$2";
             my $dest_node_id = "$3.$4";
-            my $src_node_name = $node_name_hash->{$src_node_id};
-            my $dest_node_name = $node_name_hash->{$dest_node_id};
-            my $edge = "$src_node_node->$dest_node_name";
+            my $src_node_name = $node_name_hash_ref->{$src_node_id};
+            my $dest_node_name = $node_name_hash_ref->{$dest_node_id};
+            my $edge = "$src_node_name->$dest_node_name";
 
             if( $edge =~ /$search_edge/) { 
                 $found = 1;
@@ -267,6 +273,7 @@ sub search_for_edge_in_graph {
         }
     }
     return $found;
+    
 }
 
 
@@ -289,20 +296,23 @@ sub find_edge_in_originator {
     open (my $fh, "<$g_originating_clusters_file") or
         die("Could not open $g_originating_clusters_file");
 
-    for (my $i = 0; $i < min($last_rank_to_explore, scalar(@{$originators_array_ref})) $i++) {
+    $last_rank_to_explore = ($last_rank_to_explore == 0) ? 
+        scalar(@{$originators_array_ref}) : min($last_rank_to_explore, scalar(@{$originators_array_ref}));
+
+    for (my $i = 0; $i < $last_rank_to_explore; $i++) {
 
         my $cid = $originators_array_ref->[$i];
-        my $offset = $g_originators_byte_idx{$cid};
+        my $offset = $g_originators_byte_idx{$cid};        
         seek($fh, $offset, 0);
-
+        
         # Read the header, the digraph line, and the cluster summary line
         $_ = <$fh>; $_ = <$fh>; $_ = <$fh>;
-
+        
         my %node_name_hash;
         DotHelper::parse_nodes_from_file($fh, 1, \%node_name_hash);
         $found = search_for_edge_in_graph($fh, \%node_name_hash, $search_edge);
-        
-        if($found) last;
+
+        if ($found) {last};
     }
 
     return $found;
@@ -315,33 +325,28 @@ sub find_edge_in_originator {
 ##
 sub handle_requests {
     assert(scalar(@_) == 2);
-    my($file, $is_combained_ranked_results_file) = @_;
+    my($file, $is_combined_ranked_results_file) = @_;
 
     open(my $fh, "<$file") or die("Could not open file");
 
-    while(<$input_fh>) {
-        
-        my $cluster_id;
-        my $mutation_type;
-        my $originators;
-        my $s1_reqs;
-
-        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Candidate originating clusters: ([-\w\s0-9\.]+)/) {
+    while(<$fh>) {
+        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).+Candidate originating clusters: ([-\s\(\)0-9\.]+)\\n\\n.+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
             my $cluster_id = $1;
             my $mutation_type = $2;
-            
-            my $originators = $3;
-            $originators =~ /(-0-9\.+)//g;
-            my @originators_array = split($originators, / /);
+            my $originators = $5;
+            my $s1_reqs = $7;
 
-            my $s1_reqs = $6;
+            $originators =~ s/\([-0-9\.]+\)//g;
+            my @originators_array = split(' ', $originators);
 
             my %node_name_hash;
             DotHelper::parse_nodes_from_file($fh, 1, \%node_name_hash);
-            $mutation_edge_found = search_for_edge_in_graph($fh, \%node_name_hash, $g_mutated_edge);
-            $orignator_edge_found = find_originator_edge(\@origiantors_array, $g_originator_edge);
+            my $mutation_edge_found = search_for_edge_in_graph($fh, \%node_name_hash, $g_mutated_edge);
+            print "$mutation_edge_found\n";
+            my $originator_edge_found = find_edge_in_originator(\@originators_array, $g_lowest_ranked_originator_to_examine, 
+                                                                $g_originator_edge);
 
-            if($is_combined_ranked_results_file) {
+            if ($is_combined_ranked_results_file) {
                 compute_combined_ranked_results_stats($cluster_id, $mutation_type, 
                                                       $mutation_edge_found, $originator_edge_found, 
                                                       $s1_reqs);                
@@ -349,24 +354,23 @@ sub handle_requests {
 
             # If this cluster was never seen before, add to s1 totals
             if (!defined $g_already_seen_clusters{$cluster_id}) {
-                update_mutation_accounting_info($cluster_id, $mutation_type, 
-                                                $mutation_edge_Found, $originator_edge_found, $s1_reqs);
-                $g_total_s1_reqs += s1_reqs;
-                $g_already_seen_cluster{$cluster_id} = 1;
+                update_mutation_accounting_info($mutation_edge_found, $s1_reqs);
+                $g_total_s1_reqs += $s1_reqs;
+                $g_already_seen_clusters{$cluster_id} = 1;
             }
         }
     }
-    close($input_fh);
+    close($fh);
 }
             
 
 ##### Main routine #####
-
 get_options();
 build_index_on_originators_file();
+
 handle_requests($g_combined_ranked_results_file, 1);
-handle_requests($g_originators_file, 0);
-handle_requests($g_uninteresting_file, 0);
+#handle_requests($g_originating_clusters_file, 0);
+#handle_requests($g_not_interesting_clusters_file, 0);
 
 #print_category_info();
 #print_request_info();
