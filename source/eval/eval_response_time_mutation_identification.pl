@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.7 2010/02/19 07:42:26 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.8 2010/03/01 18:35:44 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -243,7 +243,7 @@ sub compute_combined_ranked_results_stats {
         $p_value, $s1_reqs, $mutated_info) = @_;
 
     # Determine if this is a response-time mutation
-    my $is_response_time_mutation = ($mutation_type =~ /Response/);
+    my $is_response_time_mutation = ($mutation_type =~ /Response/i);
 
     # Increment the number of 'virtual requests'
     $g_num_virtual_requests += $s1_reqs;
