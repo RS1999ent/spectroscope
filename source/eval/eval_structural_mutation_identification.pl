@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: eval_structural_mutation_identification.pl, v $
+# $cmuPDL: eval_structural_mutation_identification.pl,v 1.3 2010/04/12 14:06:53 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -112,6 +112,20 @@ sub print_usage {
 
 
 ##
+# Calculate base2 logarithm
+#
+# @param val: Will calculate log2(val)
+# @return: log2(val)
+##
+sub log2 {
+    assert(scalar(@_) == 1);
+    my ($val) = @_;
+
+    return log($val)/log(2);
+}
+
+
+##
 # Get input options
 ##
 sub get_options {
@@ -152,7 +166,7 @@ sub compute_combined_ranked_results_stats {
 
     # Determine if this is a structural mutation
     my $is_structural_mutation = ($mutation_type =~ /structural/i);
-    
+
     # Increment the number of 'virtual requests'
     $g_num_virtual_requests += $s1_reqs;
 
@@ -170,7 +184,7 @@ sub compute_combined_ranked_results_stats {
         # A structural mutation was identified, but it does not contain the mutated edge
         $g_num_virtual_clusters_false_positives{STRUCTURAL}++;
         $g_num_virtual_requests_false_positives{STRUCTURAL} += $s1_reqs;
-        push(@g_combined_ranked_results_bitmap, -1);
+        push(@g_combined_ranked_results_bitmap, 0);
 
     } else {
         if ($originator_edge_found == 0) { 
@@ -330,7 +344,7 @@ sub handle_requests {
     open(my $fh, "<$file") or die("Could not open file");
 
     while(<$fh>) {
-        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).+Candidate originating clusters: ([-\s\(\)0-9\.]+)\\n\\n.+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
+        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).+Candidate originating clusters: ([-\s\(\)0-9\.]*)\\n\\n.+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
             my $cluster_id = $1;
             my $mutation_type = $2;
             my $originators = $5;
@@ -342,7 +356,7 @@ sub handle_requests {
             my %node_name_hash;
             DotHelper::parse_nodes_from_file($fh, 1, \%node_name_hash);
             my $mutation_edge_found = search_for_edge_in_graph($fh, \%node_name_hash, $g_mutated_edge);
-            print "$mutation_edge_found\n";
+
             my $originator_edge_found = find_edge_in_originator(\@originators_array, $g_lowest_ranked_originator_to_examine, 
                                                                 $g_originator_edge);
 
@@ -362,17 +376,128 @@ sub handle_requests {
     }
     close($fh);
 }
-            
+
+
+##
+# computes the DCG value.  It is computed as: 
+# rel_p = rel_0 + sum(1, p, rel_i/log(i+1))
+#
+# @param results_bitmap: Pointer to an array of 1s and 0s indicating whether the
+# corresponding position in the ranked results file was relevant
+##
+sub compute_dcg {
+    assert(scalar(@_) == 1);
+    my ($results_bitmap) = @_;
+
+    my $score = $results_bitmap->[0];
+
+    for(my $i = 1; $i < scalar(@{$results_bitmap}); $i++) {
+        my $contrib = ($results_bitmap->[$i] == 1)? 1: 0;
+        $score += $contrib/log2($i+1);
+    }
+
+    return $score;
+}
+
+
+##
+# Prints out request-level statistics
+##
+sub print_request_level_info {
+    print "Request-level information\n";
+
+    printf "Total number of s1 requests: %d\n", $g_total_s1_reqs;
+    
+    printf "Total number of virtual requests identified: %d\n", $g_num_virtual_requests;
+
+    ### Precision info
+    my $false_positives = $g_num_virtual_requests_false_positives{STRUCTURAL} + 
+        $g_num_virtual_requests_false_positives{RESPONSE_TIME};
+
+    printf "Number/fraction of virtual requests identified that are false-positives: %d (%3.2f)\n",
+    $false_positives, $false_positives/$g_num_virtual_requests;
+
+    printf "Number/fraction of structural mutation virtual requests that are false positives: %d (%3.2f)\n",
+    $g_num_virtual_requests_false_positives{STRUCTURAL},
+    $g_num_virtual_requests_false_positives{STRUCTURAL}/$g_num_virtual_requests;
+
+    printf "Number/fraction of response-time mutation mutation virtual requests that are false positives: %d (%3.2f)\n",
+    $g_num_virtual_requests_false_positives{RESPONSE_TIME},
+    $g_num_virtual_requests_false_positives{RESPONSE_TIME}/$g_num_virtual_requests;
+
+    printf "Number/fraction of virtual requests contained in the results, that were identified as\n" .
+        "relevant structural mutations, but for which originators did not contain the originator edge: %d (%3.2f)\n\n",
+        $g_num_virtual_requests_originator_not_ided, $g_num_virtual_requests_originator_not_ided/$g_num_virtual_requests;
+    
+    # Coverage info
+    printf "Total number of requests that contain the mutated node: %d\n", $g_num_requests_with_mutated_edge;
+    printf "Fraction of requests with mutated node identified as relevant: %3.2f\n", 
+    $g_num_virtual_relevant_requests/$g_num_requests_with_mutated_edge;
+}
+
+
+##
+# Prints out cluster (category-level) statistics
+##
+sub print_cluster_level_info {
+    
+    my $num_clusters = keys %g_already_seen_clusters;
+    my $num_virtual_clusters = scalar(@g_combined_ranked_results_bitmap);
+    
+    ### Category-level information ####
+    print "Cluster-level information\n";
+    print "Total number of clusters: $num_clusters\n";
+    print "Total number of virtual clusters: $num_virtual_clusters\n";
+
+    # Precision info
+    my $false_positive_clusters = $g_num_virtual_clusters_false_positives{STRUCTURAL} +
+        $g_num_virtual_clusters_false_positives{RESPONSE_TIME};
+
+    printf "Number/fraction of virtual clusters in the ranked results that are false-positives: %d (%3.2f)\n",
+    $false_positive_clusters, $false_positive_clusters/$num_virtual_clusters;
+
+    printf "Number/fraction of virtual structural mutation clusters in the ranked results\n" .
+        "that are false posities: %d (%3.2f)\n", 
+        $g_num_virtual_clusters_false_positives{STRUCTURAL}, 
+        $g_num_virtual_clusters_false_positives{STRUCTURAL}/$num_virtual_clusters;
+
+    printf "Number/fraction of virtual response-time mutation categories in the ranked results that are\n" .
+        "false positives: %d (%3.2f)\n",
+        $g_num_virtual_clusters_false_positives{RESPONSE_TIME},
+        $g_num_virtual_clusters_false_positives{RESPONSE_TIME}/$num_virtual_clusters;
+
+    printf "Number/fraction of virtual categories that were identified as relevant\n" .
+        "structural mutations, but for which originators did not contain the originator edge: %d (%3.2f)\n",
+        $g_num_virtual_clusters_originator_not_ided, $g_num_virtual_clusters_originator_not_ided/$num_virtual_clusters;
+
+    # Compute dcg
+    my $dcg = compute_dcg(\@g_combined_ranked_results_bitmap);
+    my @best_results = sort {$b <=> $a} @g_combined_ranked_results_bitmap;
+    my $normalizer = compute_dcg(\@best_results);
+    printf "The nDCG value: %3.3f\n", $dcg/$normalizer;
+
+    # Coverage info: 
+    printf "Total number of clusters that contain the mutated edge: %d\n",
+    $g_num_clusters_with_mutated_edge;
+
+    printf "Total number of categories with mutated edge identified as structural mutations: %3.2f\n",
+    $g_num_virtual_relevant_clusters/$g_num_clusters_with_mutated_edge;
+
+    print "Ranked-results bitmap\n";
+    print @g_combined_ranked_results_bitmap;
+
+    print "\n\n";
+}
+
 
 ##### Main routine #####
 get_options();
 build_index_on_originators_file();
 
 handle_requests($g_combined_ranked_results_file, 1);
-#handle_requests($g_originating_clusters_file, 0);
-#handle_requests($g_not_interesting_clusters_file, 0);
-
-#print_category_info();
-#print_request_info();
+handle_requests($g_originating_clusters_file, 0);
+handle_requests($g_not_interesting_clusters_file, 0);
+print_cluster_level_info();
+print_request_level_info();
 
 
