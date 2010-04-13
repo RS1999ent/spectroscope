@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.6 2010/04/08 18:44:15 rajas Exp $
+# $cmuPDL: DecisionTree.pm,v 1.7 2010/04/13 14:00:11 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -25,6 +25,9 @@ use ParseDot::StructuredGraph qw[get_req_structure];
 #### Global constants ####################
 
 no define DEBUG =>;
+
+my $g_sampling_percentage = 10;
+
 
 #### Global variables ####
 
@@ -193,16 +196,18 @@ my $_build_column_names_and_queries = sub {
 # are indexes into the matching_nodes_array_ptr and the values are
 # strings that reprsent the SQL query to be issues to retrieve the
 # columns
+# @param sampling_percentage: Allows user to sample from requests
+#  in the specified cluster
 # @param outfid: filehandle to which the datatable should be written.
 # This file will be appended.
 # @param label: The label that will be applied to each row
 ##
 my $_build_and_print_data_table = sub {
 
-    assert(scalar(@_) == 7);
+    assert(scalar(@_) == 8);
     my($self, $cluster_id, $template_container_ptr,
        $matching_node_array_ptr, $queries_hash_ptr,
-       $outfid, $label) = @_;
+       $sampling_percentage, $outfid, $label) = @_;
 
     my $cluster_info_obj = $self->{PARSE_CLUSTERING_RESULTS_OBJ};
     my $request_info_obj =$self->{REQUEST_INFO_OBJ};
@@ -212,8 +217,15 @@ my $_build_and_print_data_table = sub {
                          MATCHING_NODES => $matching_node_array_ptr,
                          QUERIES => $queries_hash_ptr, 
                          IDX => 0};
+    # Set up sampling
+    srand (time ^ $$ ^ unpack "%L*", `ps axww | gzip -f`);
+    rand(100);
 
     while (-1 != (my $global_id = $cluster_info_obj->get_cluster_requests($cluster_id, \$cookie))) {
+
+        if (rand(100) >= $sampling_percentage) {
+            next;
+        }
 
         my $req_string = $request_info_obj->get_global_id_indexed_request($global_id);
         my $req_container = StructuredGraph::build_graph_structure($req_string);
@@ -405,12 +417,14 @@ sub explain_clusters {
                                         $mutated_req_container,
                                         \@matching_nodes_list,
                                         $queries_column_names->{QUERIES}, 
+                                        $g_sampling_percentage,
                                         $datatable_fid,
                                         "Non_problem");
     $self->$_build_and_print_data_table($mutated_cluster_id,
                                         $original_req_container,
                                         \@matching_nodes_list,
                                         $queries_column_names->{QUERIES},
+                                        $g_sampling_percentage,
                                         $datatable_fid,
                                         "Problem");
     close($datatable_fid);
