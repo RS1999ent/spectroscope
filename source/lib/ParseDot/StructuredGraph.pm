@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.6 2009/09/27 04:27:42 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.7 2009/11/04 02:04:19 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -365,6 +365,28 @@ sub add_child {
     return $child_node->{ID};
 }
 
+##
+# Interface for adding a existing child to a given parent
+#
+# @param self: The object container 
+# @param parent_node_id: ID of the parent node
+# @param child_node_id: ID of the child node
+# @param the edge latency for the parent/child
+##
+sub add_existing_child {
+		assert(scalar(@_) == 4);
+    my ($self, $parent_node_id, $child_node_id, $edge_latency) = @_;
+    
+		assert($self->{FINALIZED} == 0);
+    
+		my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+    my $edge_latencies_hash = $self->{EDGE_LATENCIES_HASH};
+
+    my $parent_node = $graph_structure_hash->{$parent_node_id};
+    
+		push(@{$parent_node->{CHILDREN}}, $child_node_id);
+    $edge_latencies_hash->{$parent_node_id}{$child_node_id} = $edge_latency;
+}
 
 ##
 # Finalizes the graph structure by ordering children nodes at
