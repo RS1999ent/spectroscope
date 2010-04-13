@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.5 2009/08/26 21:28:36 rajas Exp $
+# $cmuPDL: DecisionTree.pm,v 1.6 2010/04/08 18:44:15 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -329,11 +329,13 @@ sub new {
 
     # Fill in $self structure
     my $self = {};
-    $self->{S0_DB_CONN} = DBI->connect( "dbi:SQLite:$s0_database_file" ) ||
-        die("Could not connect to $s0_database_file: DBI:errstr\n");
+    $self->{S0_DB_CONN} = DBI->connect( "dbi:SQLite:$s0_database_file", "", "" ) ||
+        die("Could not connect to $s0_database_file: $DBI::errstr\n");
+    $self->{S0_DB_CONN}->{AutoCommit} = 0;
     if (defined $s1_database_file) {
-        $self->{S1_DB_CONN} = DBI->connect( "dbi:SQLite:$s1_database_file" ) ||
-            die("Could not connect to $s1_database_file: DBI:errstr\n");
+        $self->{S1_DB_CONN} = DBI->connect( "dbi:SQLite:$s1_database_file", "", "" ) ||
+            die("Could not connect to $s1_database_file: $DBI::errstr\n");
+        $self->{S1_DB_CONN}->{AutoCommit} = 0;
     }
     else {
         $self->{S1_DB_CONN} = undef;
