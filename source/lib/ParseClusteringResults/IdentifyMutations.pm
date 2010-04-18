@@ -69,13 +69,13 @@ sub find_mutation_type  {
     # Identify structural mutations and originating clusters
 #        if($snapshot_freqs->[1] > 1) {
 #            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
-    if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 10) {
+    if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 50) {
         $mutation_type = $STRUCTURAL_MUTATION;
     }
     
 #        if ($snapshot_freqs->[0] > 1) {
 #        if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
-    if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 10) {
+    if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 50) {
         $mutation_type = $ORIGINATING_CLUSTER;
     }
 

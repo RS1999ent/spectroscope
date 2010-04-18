@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.7 2009/11/04 02:04:19 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.8 2010/04/13 05:05:38 ww2 Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -62,7 +62,13 @@ sub sort_graph_structure_children {
         my @sorted_children = sort {$graph_structure_hash->{$a}->{NAME} cmp 
                                         $graph_structure_hash->{$b}->{NAME}} @children;
         $node->{CHILDREN} = \@sorted_children;
+
+        my @parents = @{$node->{PARENTS}};
+        my @sorted_parents = sort {$graph_structure_hash->{$a}->{NAME} cmp
+                                       $graph_structure_hash->{$b}->{NAME}} @parents;
+        $node->{PARENTS} = \@sorted_parents;
     }
+
 };
 
 
@@ -89,6 +95,7 @@ sub sort_graph_structure_children {
 # Each node is a hash that is comprised of: 
 #   { NAME => string,
 #     CHILDREN => ref to array of IDs of children
+#     PARENTS => ref to array of IDs of parents
 #     ID => This Node's ID
 ##
 sub build_graph_structure {
@@ -125,29 +132,30 @@ sub build_graph_structure {
             my $dest_node_name = $graph_node_hash{$dest_node_id};
             
             if(!defined $graph_structure_hash{$dest_node_id}) {
-                my @children_array;
                 my %dest_node = (NAME => $dest_node_name,
-                                 CHILDREN => \@children_array,
+                                 CHILDREN => [],
+                                 PARENTS  => [],
                                  ID => $dest_node_id);
                 $graph_structure_hash{$dest_node_id} = \%dest_node;
             }
-            
+            push(@{$graph_structure_hash{$dest_node_id}->{PARENTS}}, $src_node_id);
+
             if (!defined $graph_structure_hash{$src_node_id}) {
-                my @children_array;
                 my %src_node =  ( NAME => $src_node_name,
-                                  CHILDREN => \@children_array,
+                                  CHILDREN => [],
+                                  PARENTS => [],
                                   ID => $src_node_id);
                 $graph_structure_hash{$src_node_id} = \%src_node;
             }
-            my $src_node_hash_ptr = $graph_structure_hash{$src_node_id};
+            push(@{$graph_structure_hash{$src_node_id}->{CHILDREN}}, $dest_node_id);
 
             # If this is the first edge parsed in the graph, then this is 
             # also the root of the graph.  
+            # @bug: Probably should get red of this!}
             if($first_line == 1) {
-                $root_ptr = $src_node_hash_ptr;
+                $root_ptr = $graph_structure_hash{$src_node_id},
                 $first_line = 0;
             }
-            push(@{$src_node_hash_ptr->{CHILDREN}}, $dest_node_id);
         }
     }
     
@@ -174,9 +182,11 @@ my $_create_node = sub {
     my ($self, $name) = @_;
     
     my @children_array;
+    my @parents_array;
     my $id = $self->{CURRENT_NODE_ID}++;
     my %node = ( NAME => $name,
                  CHILDREN => \@children_array,
+                 PARENTS => \@parents_array,
                  ID => "$self->{PREPEND_ID}" . "$id" );
 
     return \%node;
@@ -357,6 +367,7 @@ sub add_child {
     my $parent_node = $graph_structure_hash->{$parent_node_id};
     
     push(@{$parent_node->{CHILDREN}}, $child_node->{ID});
+    push(@{$child_node->{PARENTS}}, $parent_node_id);
     $graph_structure_hash->{$child_node->{ID}} = $child_node;
 
     assert(!defined $edge_latencies_hash->{$parent_node_id}{$child_node->{ID}});
@@ -374,17 +385,19 @@ sub add_child {
 # @param the edge latency for the parent/child
 ##
 sub add_existing_child {
-		assert(scalar(@_) == 4);
+    assert(scalar(@_) == 4);
     my ($self, $parent_node_id, $child_node_id, $edge_latency) = @_;
     
-		assert($self->{FINALIZED} == 0);
+    assert($self->{FINALIZED} == 0);
     
-		my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
     my $edge_latencies_hash = $self->{EDGE_LATENCIES_HASH};
-
-    my $parent_node = $graph_structure_hash->{$parent_node_id};
     
-		push(@{$parent_node->{CHILDREN}}, $child_node_id);
+    my $parent_node = $graph_structure_hash->{$parent_node_id};
+    my $child_node = $graph_structure_hash->{$child_node_id};
+
+    push(@{$parent_node->{CHILDREN}}, $child_node_id);
+    push(@{$child_node->{PARENTS}}, $parent_node_id);
     $edge_latencies_hash->{$parent_node_id}{$child_node_id} = $edge_latency;
 }
 
@@ -478,6 +491,27 @@ sub get_children_ids {
     my @children_copy = @{$graph_structure_hash->{$node_id}->{CHILDREN}};
     
     return \@children_copy;
+}
+
+
+##
+# Interface for getting the parent IDs of a node
+#
+# @param self: The object cotnainer
+# @param node_id: The ID of the node for which to retunr children
+#
+# @paren a pointer to an array of node ids
+sub get_parent_ids {
+    assert(scalar(@_) == 2);
+    my ($self, $node_id) = @_;
+    
+    my $graph_structure_hash = $self->{GRAPH_STRUCTURE_HASH};
+    
+    assert(defined $graph_structure_hash->{$node_id});
+    
+    my @parents_copy = @{$graph_structure_hash->{$node_id}->{PARENTS}};
+    
+    return \@parents_copy;
 }
 
 
