@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.9 2010/04/12 07:22:42 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.10 2010/04/12 23:39:38 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -318,8 +318,13 @@ sub handle_requests {
             $p_value = $5;
             $s1_reqs = $6;
             my %node_name_hash;
+
+            if ($is_combined_ranked_results_file && $cost <= 0) {
+               next;
+           } 
             
             DotHelper::parse_nodes_from_file($input_fh, 1, \%node_name_hash);
+
             my $mutation_info = find_edge_mutation($input_fh, \%node_name_hash);
             
             if($is_combined_ranked_results_file) {

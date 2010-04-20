@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: eval_structural_mutation_identification.pl,v 1.3 2010/04/12 14:06:53 rajas Exp $
+# $cmuPDL: eval_structural_mutation_identification.pl,v 1.4 2010/04/12 23:39:38 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -349,6 +349,10 @@ sub handle_requests {
             my $mutation_type = $2;
             my $originators = $5;
             my $s1_reqs = $7;
+
+            if($is_combined_ranked_results_file && $cost <= 0) {
+                next;
+            }
 
             $originators =~ s/\([-0-9\.]+\)//g;
             my @originators_array = split(' ', $originators);
