@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: eval_structural_mutation_identification.pl,v 1.4 2010/04/12 23:39:38 rajas Exp $
+# $cmuPDL: eval_structural_mutation_identification.pl,v 1.5 2010/04/20 23:07:32 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -347,6 +347,7 @@ sub handle_requests {
         if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).+Candidate originating clusters: ([-\s\(\)0-9\.]*)\\n\\n.+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
             my $cluster_id = $1;
             my $mutation_type = $2;
+            my $cost = $3;
             my $originators = $5;
             my $s1_reqs = $7;
 
