@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseRequests.pm,v 1.9 2009/05/19 06:32:28 source Exp $
+# $cmuPDL: ParseRequests.pm,v 1.10 2009/07/23 01:15:58 rajas Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  The
 # specific files created and the index mappings are listed below.
@@ -129,18 +129,23 @@ my $_handle_requests = sub {
     my ($self, $dot_files_ref, $index_file, $snapshot) = @_;
     assert($snapshot == 0 || $snapshot == 1);
 
+    my $request_latency_files = $self->{REQUEST_LATENCY_FILES};
     # Open the index files for writing
     open(my $snapshot_idx_fh, ">$index_file")
         or die("Could not open $index_file");
     open(my $gid_to_lid_idx_fh, ">>$self->{GLOBAL_IDS_TO_LOCAL_IDS_FILE}")
         or die("could not open $self->{GLOBAL_IDS_TO_LOCAL_IDS_FILE}\n");
+    open(my $gid_to_latency_fh, ">>$self->{GLOBAL_IDS_TO_LATENCIES_FILE}")
+        or die("could not open $self->{GLOBAL_IDS_TO_LATENCIES_FILE}\n");
+
+    my @req_latencies;
 
     for(my $i = 0; $i < scalar(@{$dot_files_ref}); $i++) {
         my $snapshot_file = $dot_files_ref->[$i];
 
         open(my $snapshot_fh, "<$snapshot_file") 
             or die("Could not open $snapshot_file");
-    
+
         # Iterate through requests
         my $old_byte_offset = 0;
         while(<$snapshot_fh>) {
@@ -156,11 +161,14 @@ my $_handle_requests = sub {
                 $old_byte_offset = tell($snapshot_fh);
                 next;
             }
-            
+	  	    
             #generate the snapshot index and global id to local id mapping
             printf $snapshot_idx_fh "$i $local_id $old_byte_offset\n";
             printf $gid_to_lid_idx_fh "$self->{GLOBAL_ID} $local_id $snapshot $i\n";
-            
+          
+	    #generate the global id to request latency mapping
+	    printf $gid_to_latency_fh "$self->{GLOBAL_ID} $request_latency\n";
+
             # Skip the Begin Digraph { line
             $_ = <$snapshot_fh>;
             
@@ -175,6 +183,7 @@ my $_handle_requests = sub {
     }
 
     close($gid_to_lid_idx_fh);
+    close($gid_to_latency_fh);
     close($snapshot_idx_fh);
 };
 
@@ -220,6 +229,10 @@ sub new {
     # Output file names and hashes for this class
     $self->{S0_REQUEST_INDEX_FILE} = "$output_dir/s0_request_index.dat";
 
+    # Global ID to request latency
+    $self->{GLOBAL_IDS_TO_LATENCIES_FILE} = "$output_dir/global_ids_to_latencies.dat";
+    
+    # Global ID to local ID
     $self->{GLOBAL_IDS_TO_LOCAL_IDS_FILE} = "$output_dir/global_ids_to_local_ids.dat";
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};

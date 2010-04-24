@@ -224,7 +224,7 @@ sub create_cluster_frequency_comparison_files {
 # @param row_num_to_edge_name: Mapping from row numbers to edge names
 # @param hyp_test: A hypothesis test object
 # @param graph_info: An object of type PrintGraphs
-# @param directory to which distribution data should be written
+# @param output_dir: directory to which distribution data should be written
 #
 # @return: A comparison ID for retrieving results of the hypothesis tests
 ##
