@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.13 2009/09/27 19:45:20 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.14 2010/03/30 19:49:06 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -119,6 +119,39 @@ my $_print_string_rep_hash = sub {
     
     close($string_rep_fh);
     close($string_rep_mapping_fh);
+};
+
+my $_print_gid_to_cid = sub {
+    my $self = shift;
+    my %latency_hash;
+
+    open(my $string_rep_mapping_fh, "<$self->{INPUT_VEC_TO_GLOBAL_IDS_FILE}");
+    open(my $gid_to_latency_fh, "<$self->{GLOBAL_ID_TO_LATENCY_FILE}");
+    open(my $gid_to_cid_fh, ">$self->{GLOBAL_ID_TO_CLUSTER_ID_FILE}");
+
+    while(<$gid_to_latency_fh>) {
+	if(/(\d+) ([0-9\.]+)/) {
+	    $latency_hash{$1} = $2;
+	}
+    }
+
+    my $cluster_id = 1;
+
+    while(<$string_rep_mapping_fh>) {
+	chomp;
+	my @global_ids = split(/ /, $_);
+
+	foreach(@global_ids) {
+	    my $global_id = $_;
+	    printf $gid_to_cid_fh "$global_id $cluster_id $latency_hash{$global_id}\n";
+	}
+
+	$cluster_id++;
+    }
+
+    close($string_rep_mapping_fh);
+    close($gid_to_latency_fh);
+    close($gid_to_cid_fh);
 };
 
 
@@ -400,7 +433,10 @@ sub new {
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
-    
+
+    # Global ID to latency mapping file
+    $self->{GLOBAL_ID_TO_LATENCY_FILE} = "$output_dir/global_ids_to_latencies.dat";
+    $self->{GLOBAL_ID_TO_CLUSTER_ID_FILE} = "$output_dir/global_ids_to_cluster_ids.dat";
     bless ($self, $class);
     return $self;
 }
@@ -444,6 +480,7 @@ sub create_clustering_input {
     # Print out files representing the converted data
     $self->$_print_string_rep_hash();
     $self->$_print_alphabet_mapping();
+    $self->$_print_gid_to_cid();
 }		
 
 
