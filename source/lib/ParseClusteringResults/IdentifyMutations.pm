@@ -141,6 +141,7 @@ sub identify_originators_and_cost {
             my $weight; # Edit distance betweeen originator and mutation
             my %unweighted_mutation_cost;
             my %weighted_mutation_cost;
+            my %inverse_sed;
 
             my $total_weight = 0;
             my $num_originators = 0;
@@ -185,6 +186,7 @@ sub identify_originators_and_cost {
 
                 # Store weights and distances
                 $unweighted_mutation_cost{$o_id} = $unweighted_cost;
+                $inverse_sed{$o_id} = $weight;
                 $weighted_mutation_cost{$o_id} = $unweighted_cost * $weight,
             }
 
@@ -194,10 +196,11 @@ sub identify_originators_and_cost {
                                                                $total_weight);
             
             # Insert ranked list into information about this cluster
-            $mutation_info->{DETAILS} = { WEIGHTED_ORIGINATORS => \%weighted_mutation_cost,
-                                          TOTAL_WEIGHTED_COST => $total_weighted_cost,
+            $mutation_info->{DETAILS} = { WEIGHTED_ORIGINATORS   => \%weighted_mutation_cost,
+                                          TOTAL_WEIGHTED_COST    => $total_weighted_cost,
                                           UNWEIGHTED_ORIGINATORS => \%unweighted_mutation_cost,
-                                          TOTAL_UNWEIGHTED_COST => $total_unweighted_cost};
+                                          TOTAL_UNWEIGHTED_COST  => $total_unweighted_cost,
+                                          INVERSE_SED            => \%inverse_sed};
         }
 
         if (($mutation_info->{MUTATION_TYPE} & $RESPONSE_TIME_MASK) == $RESPONSE_TIME_CHANGE) {
@@ -543,7 +546,8 @@ sub get_originators {
     
     my $originators;
     if ($use_weighted_costs == 1) {
-        $originators = $mutation_info->{DETAILS}->{WEIGHTED_ORIGINATORS};
+#        $originators = $mutation_info->{DETAILS}->{WEIGHTED_ORIGINATORS};
+        $originators = $mutation_info->{DETAILS}->{INVERSE_SED};
     }
     else {
         $originators = $mutation_info->{DETAILS}->{UNWEIGHTED_ORIGINATORS};
