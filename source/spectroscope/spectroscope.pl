@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.16 2010/03/30 19:49:07 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.17 2010/04/07 06:35:36 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -66,6 +66,15 @@ my $g_sed;
 
 # Whether or not to pre-compute all edit stances
 my $g_calculate_all_distances = 0;
+
+# Whether or not 1-unique n relationship should be maintained
+# when calculating string edit distnaces
+my $g_dont_enforce_one_to_n = 0;
+
+#
+# The default structural mutation threshold
+my $g_mutation_threshold = 50;
+
 
 #### Main routine #########
 
@@ -154,6 +163,8 @@ my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
 my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_output_dir,
                                                             $g_print_requests,
                                                             $g_sed,
+                                                            $g_dont_enforce_one_to_n,
+                                                            $g_mutation_threshold,
                                                             $g_output_dir);
 
 
@@ -172,9 +183,11 @@ sub parse_options {
 	GetOptions("output_dir=s"              => \$g_output_dir,
 			   "snapshot0=s{1,10}"         => \@g_snapshot0_files,
 			   "snapshot1:s{1,10}"         => \@g_snapshot1_files,
+               "mutation_threshold:i"      => \$g_mutation_threshold,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
                "bypass_sed+"               => \$g_bypass_sed,
-               "calc_all_edit_dists+"       => \$g_calculate_all_distances);
+               "calc_all_edit_dists+"      => \$g_calculate_all_distances,
+               "dont_enforce_1_to_n+"      => \$g_dont_enforce_one_to_n);
 
     # These parameters must be specified by the user
     if (!defined $g_output_dir || !defined $g_snapshot0_files[0]) {
@@ -203,4 +216,7 @@ sub print_usage {
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
     print "\t--calc_all_distances: Whether all edit distances should be pre-computed\n" .
         "\t or calculated on demand (OPTIONAL)\n";
+    print "\t--mutation_threshold: Threshold for identifying a cluster as containing mutations\n".
+        "or originators\n";
+    print "\t--dont_enforce_1_to_n: 1 to N requirement for identifying originators is not enforced\n";
 }

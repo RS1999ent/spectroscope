@@ -59,9 +59,9 @@ my $RESPONSE_TIME_MASK = 0x100;
 ##
 sub find_mutation_type  {
 
-    assert(scalar(@_) == 2);
-    my ($this_cluster_info_hash_ref, $total_reqs) = @_;
-    
+    assert(scalar(@_) == 3);
+    my ($this_cluster_info_hash_ref, $mutation_threshold, $total_reqs) = @_;
+
     my $snapshot_freqs = $this_cluster_info_hash_ref->{FREQUENCIES};
     my $mutation_type = $NO_MUTATION;
     my $avg_reqs_per_snapshot = $total_reqs/2;
@@ -69,13 +69,13 @@ sub find_mutation_type  {
     # Identify structural mutations and originating clusters
 #        if($snapshot_freqs->[1] > 1) {
 #            if($snapshot_freqs->[1] > $snapshot_freqs->[0]) {
-    if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > 50) {
+    if(($snapshot_freqs->[1] - $snapshot_freqs->[0]) > $mutation_threshold) {
         $mutation_type = $STRUCTURAL_MUTATION;
     }
     
 #        if ($snapshot_freqs->[0] > 1) {
 #        if($snapshot_freqs->[0] > $snapshot_freqs->[1]) {
-    if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > 50) {
+    if(($snapshot_freqs->[0] - $snapshot_freqs->[1]) > $mutation_threshold) {
         $mutation_type = $ORIGINATING_CLUSTER;
     }
 
@@ -128,8 +128,8 @@ sub normalize_mutation_costs {
 ##
 sub identify_originators_and_cost {
     
-    assert(scalar(@_) == 2);
-    my ($cluster_info_hash_ref, $sed_obj) = @_;
+    assert(scalar(@_) == 3);
+    my ($cluster_info_hash_ref, $sed_obj, $dont_enforce_one_to_n) = @_;
 
     foreach my $m_id (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
         
@@ -167,11 +167,13 @@ sub identify_originators_and_cost {
                     next;
                 }
 
-                # Enforce 1-N relationship explicitly
-                if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
-                    print "$o_id cannot be an originating cluster of $m_id\n" .
-                        "\t because $m_id has increased in freq more than $o_id has decreased\n";
-                    next;
+                if ($dont_enforce_one_to_n == 0) {
+                    # Enforce 1-N relationship explicitly
+                    if($extra_reqs_in_mutation > $fewer_reqs_in_originator) {
+                        print "$o_id cannot be an originating cluster of $m_id\n" .
+                            "\t because $m_id has increased in freq more than $o_id has decreased\n";
+                        next;
+                    }
                 }
 
                 $weight = 1/$sed_obj->get_sed($m_id, $o_id);
@@ -353,8 +355,9 @@ sub determine_if_structural_mutations_exist {
 ##
 sub identify_mutations {
     
-    assert(scalar(@_) == 4);
-    my ($cluster_info_hash_ref, $sed, $output_dir, $total_reqs) = @_;
+    assert(scalar(@_) == 6);
+    my ($cluster_info_hash_ref, $sed, $output_dir, 
+        $dont_enforce_one_to_n, $mutation_threshold, $total_reqs) = @_;
     
     # Run Chi-Squared test here to tell if we should label *anything* as a structural mutation
     #my $structural_mutations_exist = determine_if_structural_mutations_exist($cluster_info_hash_ref,
@@ -365,12 +368,14 @@ sub identify_mutations {
     for my $key (keys %{$cluster_info_hash_ref}) {
         my %mutation_info;
         $mutation_info{MUTATION_TYPE} = find_mutation_type($cluster_info_hash_ref->{$key}, 
+                                                           $mutation_threshold,
                                                            $total_reqs);
+
         $cluster_info_hash_ref->{$key}->{MUTATION_INFO} = \%mutation_info;
     }
 
     # Identify originators and cost of mutations
-    identify_originators_and_cost($cluster_info_hash_ref, $sed);
+    identify_originators_and_cost($cluster_info_hash_ref, $sed, $dont_enforce_one_to_n);
     calculate_structural_mutation_error($cluster_info_hash_ref, $output_dir);
 }
 

@@ -298,6 +298,8 @@ my $_compute_cluster_info = sub {
     
     IdentifyMutations::identify_mutations(\%cluster_info_hash, $self->{SED_CLASS}, 
                                           $self->{INTERIM_OUTPUT_DIR},
+                                          $self->{DONT_ENFORCE_ONE_TO_N},
+                                          $self->{MUTATION_THRESHOLD},
                                           $total_requests->[0] + $total_requests->[1]);
     
     $self->{CLUSTER_INFO_HASH} = \%cluster_info_hash;
@@ -757,10 +759,10 @@ my $_print_all_clusters = sub {
 ##
 sub new {
 
-    assert(scalar(@_) == 5);
+    assert(scalar(@_) == 7);
 
-    my ($proto, $convert_data_dir, 
-        $print_graphs_class, $sed_class, $output_dir) = @_;
+    my ($proto, $convert_data_dir, $print_graphs_class, $sed_class,
+        $dont_enforce_one_to_n, $mutation_threshold, $output_dir) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
@@ -800,6 +802,9 @@ sub new {
 
     $self->{WEIGHTED_STRUCTURAL_MUTATIONS_GRAPH_FILE} = "$output_dir/weighted_structural_mutations.dot";
     $self->{WEIGHTED_COMBINED_GRAPH_FILE} = "$output_dir/weighted_combined_ranked_graphs.dot";
+
+    $self->{DONT_ENFORCE_ONE_TO_N} = $dont_enforce_one_to_n;
+    $self->{MUTATION_THRESHOLD} = $mutation_threshold;
 
     # Create the interim output directory
     system("mkdir -p $self->{INTERIM_OUTPUT_DIR}") == 0 or 

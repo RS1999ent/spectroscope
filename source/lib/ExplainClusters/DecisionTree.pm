@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: DecisionTree.pm,v 1.8 2010/04/13 14:46:51 rajas Exp $
+# $cmuPDL: DecisionTree.pm,v 1.9 2010/04/18 12:33:39 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -33,7 +33,7 @@ my $g_sampling_percentage = 10;
 
 # Data for these columns will not be included when
 # constructing the data table and column headers
-my $_exclude_list = "breadcrumb timestamp tid soid file_soid status pid optype dir_soid fid rotation_factor";
+my $_exclude_list = "breadcrumb timestamp tid soid file_soid status pid optype dir_soid fid";
 
 
 ### Static Callback methods for the match graphs module #########
