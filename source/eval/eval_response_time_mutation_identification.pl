@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.10 2010/04/12 23:39:38 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.11 2010/04/20 23:07:32 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -71,6 +71,10 @@ my $g_avg_s0_edge_latency = 0;
 my $g_avg_s1_edge_latency = 0;
 my $g_num_s0_edges_found = 0;
 my $g_num_s1_edges_found = 0;
+my $g_avg_s0_edge_var = 0;
+my $g_avg_s1_edge_var = 0;
+my $g_avg_edge_p_value = 0;
+my $g_num_p_values = 0;
 
 
 #####
@@ -159,16 +163,20 @@ sub find_edge_mutation {
     my $is_mutation = 0;
     my @s0_edge_latencies;
     my @s1_edge_latencies;
+    my @s0_edge_variances;
+    my @s1_edge_variances;
+    my @p_values;
 
     while (<$fh>) {
         
-        if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"(\w+)\" label=\"p:([-0-9\.]+)\\n.*a: ([-0-9\.]+)us \/ ([-0-9\.]+)us/) {
+        if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"\w+\" label=\"p:([-0-9\.]+)\\n.*a: ([-0-9\.]+)us \/ ([-0-9\.]+)us.*s: ([-0-9\.]+)us \/ ([0-9\.]+)us/) {
             my $src_node_id = "$1.$2";
             my $dest_node_id = "$3.$4";
-            my $color = $5;
-            my $p = $6;
-           my $s0_edge_latency = $7;
-            my $s1_edge_latency = $8;
+            my $p = $5;
+            my $s0_edge_latency = $6;
+            my $s1_edge_latency = $7;
+            my $s0_stddev = $8;
+            my $s1_stddev = $9;
             my $src_node_name = $node_name_hash->{$src_node_id};
             my $dest_node_name = $node_name_hash->{$dest_node_id};
             
@@ -177,9 +185,14 @@ sub find_edge_mutation {
                 print "Relevant edge found: $s0_edge_latency $s1_edge_latency\n";
                 if ($s0_edge_latency > 0) { push(@s0_edge_latencies, $s0_edge_latency);}
                 if ($s1_edge_latency > 0) { push(@s1_edge_latencies, $s1_edge_latency);}
+                if ($s0_edge_latency > 0) {push(@s0_edge_variances, $s0_stddev*$s0_stddev)};
+                if ($s1_edge_latency > 0) {push(@s1_edge_variances, $s1_stddev*$s1_stddev)};
 
                 if ($p < 0.05 && $p >= 0) {
                     $is_mutation = 1;
+                }
+                if($p >= 0) {
+                    push(@p_values, $p);
                 }
             }
         } else {
@@ -188,7 +201,9 @@ sub find_edge_mutation {
     }
 
     return ({NODE_FOUND => $found, IS_MUTATION => $is_mutation, 
-             S0_LATENCIES => \@s0_edge_latencies, S1_LATENCIES => \@s1_edge_latencies});
+             S0_LATENCIES => \@s0_edge_latencies, S1_LATENCIES => \@s1_edge_latencies,
+             S0_VARIANCES => \@s0_edge_variances, S1_VARIANCES => \@s1_edge_variances,
+             P_VALUES => \@p_values});
 }
 
 
@@ -207,14 +222,28 @@ sub update_mutation_accounting_info {
     my $s0_edge_latencies = $mutation_info->{S0_LATENCIES};
     my $s1_edge_latencies = $mutation_info->{S1_LATENCIES};
 
+    my $s0_edge_variances = $mutation_info->{S0_VARIANCES};
+    my $s1_edge_variances = $mutation_info->{S1_VARIANCES};
+
+    my $p_values = $mutation_info->{P_VALUES};
+
     $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + sum(0, @{$s0_edge_latencies}))/
         ($g_num_s0_edges_found + scalar(@{$s0_edge_latencies}));
     $g_num_s0_edges_found += scalar(@{$s0_edge_latencies});
-
     
     $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + sum(0, @{$s1_edge_latencies}))/
         ($g_num_s1_edges_found + scalar(@${s1_edge_latencies}));
     $g_num_s1_edges_found += scalar(@{$s1_edge_latencies});
+
+    $g_avg_s0_edge_var = ($g_avg_s0_edge_var * $g_num_s0_edges_found + sum(0, @{$s0_edge_variances}))/
+        ($g_num_s0_edges_found + scalar(@{$s0_edge_variances}));
+
+    $g_avg_s1_edge_var = ($g_avg_s1_edge_var * $g_num_s1_edges_found + sum(0, @{$s1_edge_variances}))/
+        ($g_num_s1_edges_found + scalar(@${s1_edge_variances}));
+
+    $g_avg_edge_p_value = ($g_avg_edge_p_value * $g_num_p_values + sum(0, @{$p_values}))/
+        ($g_num_p_values + scalar(@${p_values}));
+    $g_num_p_values += scalar(@{$p_values});
 
     $g_num_categories_with_mutated_node++;
     $g_num_requests_with_mutated_node += $s1_reqs;
@@ -416,7 +445,11 @@ sub print_category_level_info {
     my $dcg = compute_dcg(\@g_combined_ranked_results_bitmap);
     my @best_results = sort {$b <=> $a} @g_combined_ranked_results_bitmap;
     my $normalizer = compute_dcg(\@best_results);
-    printf "The NDCG value: %3.3f\n", $dcg/$normalizer;
+    if ($normalizer == 0) {
+        printf "The nDCG is zero: $dcg, $normalizer\n";
+    } else {
+        printf "The NDCG value: %3.3f\n", $dcg/$normalizer;
+    }
 
     # Coverage info: 
     printf "Total number of categories that contain mutated node: %d\n",
@@ -493,6 +526,16 @@ sub print_edge_level_info {
     
     printf "Average s1 latency of edges containing the mutation node: %3.2f\n\n",
     $g_avg_s1_edge_latency;
+
+    print "Average variance of edges containing the mutation node in s0: %3.2f\n",
+    $g_avg_s0_edge_var;
+
+    print "Average variance of edges containing the mutation node in s1: %3.2f\n",
+    $g_avg_s1_edge_var;
+
+    print "Average p-value of edges containing the mutation node: %3.2f\n",
+    $g_avg_edge_p_value;
+        
 }
 
 
