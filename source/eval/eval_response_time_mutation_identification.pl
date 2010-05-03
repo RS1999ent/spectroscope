@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.11 2010/04/20 23:07:32 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.12 2010/05/02 20:35:05 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -60,6 +60,9 @@ my $g_not_interesting_clusters_file;
 # The node before which the response-time mutation was induced
 my $g_mutation_node;
 
+# Another before which the response-time mutation can be induced
+my $g_mutation_node_2;
+
 ######
 # General accounting information about each cluster
 ######
@@ -102,6 +105,7 @@ sub print_options {
     print "\toriginators_file: File containing the originators\n";
     print "\tnot_interesting_file: File containing not interesting clusters\n";
     print "\tmutation_node: The name of the node before which the response-time mutation was induced\n";
+    print "\tmutation_node_2: The name of the second node before which the response-time mutation was induced\n";
 }
 
 
@@ -113,7 +117,9 @@ sub get_options {
     GetOptions("combined_ranked_results_file=s"  => \$g_combined_ranked_results_file,,
                "originators_file=s"              => \$g_originating_clusters_file,
                "not_interesting_file=s"          => \$g_not_interesting_clusters_file,
-               "mutation_node=s"                     => \$g_mutation_node);
+               "mutation_node=s"                 => \$g_mutation_node,
+               "mutation_node_2=s"               => \$g_mutation_node_2);   
+     
     
     if(!defined $g_combined_ranked_results_file || 
         !defined $g_originating_clusters_file || 
@@ -180,7 +186,7 @@ sub find_edge_mutation {
             my $src_node_name = $node_name_hash->{$src_node_id};
             my $dest_node_name = $node_name_hash->{$dest_node_id};
             
-            if ($dest_node_name =~ /$g_mutation_node/) {
+            if ($dest_node_name =~ /$g_mutation_node/ || $dest_node_name =~ /$g_mutation_node_2/) {
                 $found = 1;
                 print "Relevant edge found: $s0_edge_latency $s1_edge_latency\n";
                 if ($s0_edge_latency > 0) { push(@s0_edge_latencies, $s0_edge_latency);}
@@ -227,24 +233,35 @@ sub update_mutation_accounting_info {
 
     my $p_values = $mutation_info->{P_VALUES};
 
-    $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + sum(0, @{$s0_edge_latencies}))/
-        ($g_num_s0_edges_found + scalar(@{$s0_edge_latencies}));
-    $g_num_s0_edges_found += scalar(@{$s0_edge_latencies});
+    if (scalar(@{$s0_edge_latencies}) > 0) { 
+        $g_avg_s0_edge_latency = ($g_avg_s0_edge_latency * $g_num_s0_edges_found + sum(0, @{$s0_edge_latencies}))/
+            ($g_num_s0_edges_found + scalar(@{$s0_edge_latencies}));
+        $g_num_s0_edges_found += scalar(@{$s0_edge_latencies});
+    }
+
+    if (scalar(@{$s0_edge_variances}) > 0) {
+        $g_avg_s0_edge_var = ($g_avg_s0_edge_var * $g_num_s0_edges_found + sum(0, @{$s0_edge_variances}))/
+            ($g_num_s0_edges_found + scalar(@{$s0_edge_variances}));
+    }
+
+    if (scalar(@{$s1_edge_latencies}) > 0) {
+        $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + sum(0, @{$s1_edge_latencies}))/
+            ($g_num_s1_edges_found + scalar(@${s1_edge_latencies}));
+        $g_num_s1_edges_found += scalar(@{$s1_edge_latencies});
+    }
+
+    if (scalar(@{$s1_edge_variances}) > 0) {
+        $g_avg_s1_edge_var = ($g_avg_s1_edge_var * $g_num_s1_edges_found + sum(0, @{$s1_edge_variances}))/
+            ($g_num_s1_edges_found + scalar(@${s1_edge_variances}));
+    }
+
+
+    if (scalar(@{$p_values}) > 0) {
+        $g_avg_edge_p_value = ($g_avg_edge_p_value * $g_num_p_values + sum(0, @{$p_values}))/
+            ($g_num_p_values + scalar(@${p_values}));
+        $g_num_p_values += scalar(@{$p_values});
+    }
     
-    $g_avg_s1_edge_latency = ($g_avg_s1_edge_latency * $g_num_s1_edges_found + sum(0, @{$s1_edge_latencies}))/
-        ($g_num_s1_edges_found + scalar(@${s1_edge_latencies}));
-    $g_num_s1_edges_found += scalar(@{$s1_edge_latencies});
-
-    $g_avg_s0_edge_var = ($g_avg_s0_edge_var * $g_num_s0_edges_found + sum(0, @{$s0_edge_variances}))/
-        ($g_num_s0_edges_found + scalar(@{$s0_edge_variances}));
-
-    $g_avg_s1_edge_var = ($g_avg_s1_edge_var * $g_num_s1_edges_found + sum(0, @{$s1_edge_variances}))/
-        ($g_num_s1_edges_found + scalar(@${s1_edge_variances}));
-
-    $g_avg_edge_p_value = ($g_avg_edge_p_value * $g_num_p_values + sum(0, @{$p_values}))/
-        ($g_num_p_values + scalar(@${p_values}));
-    $g_num_p_values += scalar(@{$p_values});
-
     $g_num_categories_with_mutated_node++;
     $g_num_requests_with_mutated_node += $s1_reqs;
 }
@@ -527,13 +544,13 @@ sub print_edge_level_info {
     printf "Average s1 latency of edges containing the mutation node: %3.2f\n\n",
     $g_avg_s1_edge_latency;
 
-    print "Average variance of edges containing the mutation node in s0: %3.2f\n",
+    printf "Average variance of edges containing the mutation node in s0: %3.2f\n",
     $g_avg_s0_edge_var;
 
-    print "Average variance of edges containing the mutation node in s1: %3.2f\n",
+    printf "Average variance of edges containing the mutation node in s1: %3.2f\n",
     $g_avg_s1_edge_var;
 
-    print "Average p-value of edges containing the mutation node: %3.2f\n",
+    printf "Average p-value of edges containing the mutation node: %3.2f\n",
     $g_avg_edge_p_value;
         
 }
