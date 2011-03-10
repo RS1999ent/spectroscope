@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.12 2010/05/02 20:35:05 rajas Exp $ #
+# $cmuPDL: eval_response_time_mutation_identification.pl,v 1.13 2010/05/03 20:34:22 rajas Exp $ #
 
 ##
 # @author Raja Sambasivan
@@ -78,6 +78,9 @@ my $g_avg_s0_edge_var = 0;
 my $g_avg_s1_edge_var = 0;
 my $g_avg_edge_p_value = 0;
 my $g_num_p_values = 0;
+
+my $g_s0_response_time = 0;
+my $g_s1_response_time = 0;
 
 
 #####
@@ -186,7 +189,7 @@ sub find_edge_mutation {
             my $src_node_name = $node_name_hash->{$src_node_id};
             my $dest_node_name = $node_name_hash->{$dest_node_id};
             
-            if ($dest_node_name =~ /$g_mutation_node/ || $dest_node_name =~ /$g_mutation_node_2/) {
+            if ($dest_node_name =~ /$g_mutation_node/) {#|| $dest_node_name =~ /$g_mutation_node_2/) {
                 $found = 1;
                 print "Relevant edge found: $s0_edge_latency $s1_edge_latency\n";
                 if ($s0_edge_latency > 0) { push(@s0_edge_latencies, $s0_edge_latency);}
@@ -222,8 +225,8 @@ sub find_edge_mutation {
 # contain the mutation node.
 ##
 sub update_mutation_accounting_info {
-    assert(scalar(@_) == 2);
-    my ($s1_reqs, $mutation_info) = @_;
+    assert(scalar(@_) == 4);
+    my ($s1_reqs, $mutation_info, $s0_response_time, $s1_response_time) = @_;
     
     my $s0_edge_latencies = $mutation_info->{S0_LATENCIES};
     my $s1_edge_latencies = $mutation_info->{S1_LATENCIES};
@@ -262,6 +265,8 @@ sub update_mutation_accounting_info {
         $g_num_p_values += scalar(@{$p_values});
     }
     
+    $g_s0_response_time += $s0_response_time;
+    $g_s1_response_time += $s1_response_time;
     $g_num_categories_with_mutated_node++;
     $g_num_requests_with_mutated_node += $s1_reqs;
 }
@@ -353,16 +358,21 @@ sub handle_requests {
         my $overall_mutation_type;
         my $p_value;
         my $s1_reqs;
+        my $s0_avg_time;
+        my $s1_avg_time;
         my %node_name_hash;
         
-        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
+        if(/Cluster ID: (\d+).+Specific Mutation Type: ([\w\s]+).+Cost: ([-0-9\.]+)\\nOverall Mutation Type: ([\w\s]+).*Avg\. response times: (\d+) us ; (\d+) us.+P-value: ([-0-9\.+]).*requests: \d+ ; (\d+)/) {
             
             $cluster_id = $1;
             $mutation_type = $2;
             $cost = $3;
             $overall_mutation_type = $4;
-            $p_value = $5;
-            $s1_reqs = $6;
+            $s0_avg_time = $5;
+            $s1_avg_time = $6;
+            $p_value = $7;
+            
+            $s1_reqs = $8;
             my %node_name_hash;
 
             if ($is_combined_ranked_results_file && $cost <= 0) {
@@ -381,7 +391,7 @@ sub handle_requests {
             # If this cluster was never seen before, add to s1 totals
             if (!defined $g_already_seen_clusters{$cluster_id}) {
                 if ($mutation_info->{NODE_FOUND} == 1) {
-                    update_mutation_accounting_info($s1_reqs, $mutation_info);
+                    update_mutation_accounting_info($s1_reqs, $mutation_info, $s0_avg_time, $s1_avg_time);
                 }
                 $g_total_s1_reqs += $s1_reqs;
             }
@@ -474,6 +484,9 @@ sub print_category_level_info {
     
     printf "Total number of categories with mutated node identified as a response-time mutations: %3.2f\n\n",
     $g_num_virtual_relevant_categories/$g_num_categories_with_mutated_node;
+
+    printf "Average response time of categories with mutated node: %3.2f, %3.2f",
+    $g_s0_response_time/$g_num_categories_with_mutated_node, $g_s1_response_time/$g_num_categories_with_mutated_node;
 
     print "Ranked-results bitmap\n";
     print @g_combined_ranked_results_bitmap;

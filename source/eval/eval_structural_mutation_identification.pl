@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: eval_structural_mutation_identification.pl,v 1.5 2010/04/20 23:07:32 rajas Exp $
+# $cmuPDL: eval_structural_mutation_identification.pl,v 1.6 2010/04/21 16:20:30 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -72,6 +72,8 @@ my $g_originator_edge;
 # originator edge
 my $g_lowest_ranked_originator_to_examine = 0;
 
+my $g_threshold = 1;
+
 
 ###
 # General accounting information about eachcluster
@@ -108,6 +110,7 @@ sub print_usage {
     print "\toriginator_edge: What the mutated edge originated from\n";
     print "\tlowest_ranked_originator: For each mutation category, this is the lowest\n";
     print "\t\tthat will be examined to see if it contains the originator edge (OPTIONAL)\n";
+    print "\tthreshold: Minimum number of edges of the type specified that must be found\n";
 }
 
 
@@ -135,7 +138,8 @@ sub get_options {
                "not_interesting_file=s"          => \$g_not_interesting_clusters_file,
                "mutated_edge=s"                  => \$g_mutated_edge,
                "originator_edge=s"              => \$g_originator_edge,
-               "lowest_ranked_originator:i"      => \$g_lowest_ranked_originator_to_examine);
+               "lowest_ranked_originator:i"      => \$g_lowest_ranked_originator_to_examine,
+               "threshold:i"                     => \$g_threshold);
 
     if (!defined $g_combined_ranked_results_file || !defined $g_originating_clusters_file
         || !defined $g_not_interesting_clusters_file || !defined $g_mutated_edge ||
@@ -266,10 +270,10 @@ sub build_index_on_originators_file {
 # @return: 1 if the edge is found, 0 otherwise
 ##
 sub search_for_edge_in_graph {
-    assert(scalar(@_) == 3);
-    my ($fh, $node_name_hash_ref, $search_edge) = @_;
+    assert(scalar(@_) == 4);
+    my ($fh, $node_name_hash_ref, $search_edge, $threshold) = @_;
 
-    my $found = 0;
+    my $count = 0;
 
     while (<$fh>) {
         if(/(\d+)\.(\d+) \-> (\d+)\.(\d+) \[color=\"(\w+)\" label=\"p:([-0-9\.]+)\\n.*a: ([-0-9\.]+)us \/ ([-0-9\.]+)us/) {
@@ -280,14 +284,18 @@ sub search_for_edge_in_graph {
             my $edge = "$src_node_name->$dest_node_name";
 
             if( $edge =~ /$search_edge/) { 
-                $found = 1;
+                $count++;
             }
         } else {
             last;
         }
     }
-    return $found;
-    
+
+    if ($count >= $threshold) {
+        return 1;
+    }
+
+    return 0;
 }
 
 
@@ -324,7 +332,7 @@ sub find_edge_in_originator {
         
         my %node_name_hash;
         DotHelper::parse_nodes_from_file($fh, 1, \%node_name_hash);
-        $found = search_for_edge_in_graph($fh, \%node_name_hash, $search_edge);
+        $found = search_for_edge_in_graph($fh, \%node_name_hash, $search_edge, 1);
 
         if ($found) {last};
     }
@@ -360,7 +368,7 @@ sub handle_requests {
 
             my %node_name_hash;
             DotHelper::parse_nodes_from_file($fh, 1, \%node_name_hash);
-            my $mutation_edge_found = search_for_edge_in_graph($fh, \%node_name_hash, $g_mutated_edge);
+            my $mutation_edge_found = search_for_edge_in_graph($fh, \%node_name_hash, $g_mutated_edge, $g_threshold);
 
             my $originator_edge_found = find_edge_in_originator(\@originators_array, $g_lowest_ranked_originator_to_examine, 
                                                                 $g_originator_edge);

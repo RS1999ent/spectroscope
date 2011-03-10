@@ -1,6 +1,6 @@
 #! /user/bin/perl -w
 
-# $cmuPDL: get_path_shape_statistics.pl,v 1.2 2009/07/28 20:22:51 rajas Exp $
+# $cmuPDL: get_path_shape_statistics.pl,v 1.3 2009/11/04 02:04:19 rajas Exp $
 
 ##
 # @author Raja Sambasivan
@@ -134,15 +134,21 @@ sub create_parse_clustering_results_obj {
                                            $g_convert_reqs_dir);
     my $clustering_input = new CreateClusteringInput(\@g_graph_files_ref,
                                                  $g_convert_reqs_dir);
+
+    my $g_sed = new Sed("$g_convert_reqs_dir/input_vector.dat",
+                        "$g_convert_reqs_dir/input_vector_distance_matrix.dat",
+                        1);
+
     my $pass_through = new PassThrough($g_convert_reqs_dir,
-                                       $g_convert_reqs_dir);
+                                       $g_convert_reqs_dir, 
+                                       $g_sed);
 
     if ($parse_requests->do_output_files_exist() == 0 ||
         $clustering_input->do_output_files_exist() == 0 ||
         $pass_through->do_output_files_exist() == 0) {
         
         $parse_requests->parse_requests();
-        $clustering_input->create_clustering_input(1);
+        $clustering_input->create_clustering_input();
         $pass_through->cluster();
     }
 
@@ -154,7 +160,10 @@ sub create_parse_clustering_results_obj {
                                            \@g_graph_files_ref);
     my $parse_clustering_results = new ParseClusteringResults($g_convert_reqs_dir,
                                                               $print_requests,
-                                                              $g_temp_output_dir, 2);
+                                                              $g_sed,
+                                                              0,
+                                                              50,
+                                                              $g_temp_output_dir);
     undef $print_requests;
     
     return $parse_clustering_results;
