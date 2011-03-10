@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.5 2009/07/27 20:08:21 rajas Exp $
+# $cmuPDL: DotHelper.pm,v 1.6 2009/08/26 21:28:36 rajas Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -54,7 +54,8 @@ sub parse_nodes_from_string {
     my $include_label = shift;
     my $node_name_hash = shift;
     
-    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/g) {
+    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/g || 
+        $graph =~m/(\d+).(\d+) \[label=\"(\w+)\"\]/g) {
 
         my $node_name;
         if (defined $4 && $include_label) {
