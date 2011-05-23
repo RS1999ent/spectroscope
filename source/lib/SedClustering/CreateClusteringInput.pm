@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.13 2009/09/27 19:45:20 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.14 2010/03/30 19:49:06 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -148,9 +148,8 @@ my $_handle_nodes = sub {
 	$last_in_data_fh_pos = tell($in_data_fh);
     
 	while(<$in_data_fh>) {
-        
-		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
 
+        if(/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/) {
 			# Add the Node label to the alphabet hash 
             if (!$4 eq '') { 
                 $node_name = $3 . "_" . $4; 

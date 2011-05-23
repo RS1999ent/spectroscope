@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.6 2009/08/26 21:28:36 rajas Exp $
+# $cmuPDL: DotHelper.pm,v 1.6.14.1 2011/03/10 23:06:20 rajas Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -54,11 +54,10 @@ sub parse_nodes_from_string {
     my $include_label = shift;
     my $node_name_hash = shift;
     
-    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/g || 
-        $graph =~m/(\d+).(\d+) \[label=\"(\w+)\"\]/g) {
+    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/g) {
 
         my $node_name;
-        if (defined $4 && $include_label) {
+        if ((defined $4) && ($4 ne "") && $include_label) {
             $node_name = $3 . "_" . $4;
         } else {
             $node_name = $3;
@@ -96,24 +95,23 @@ sub parse_nodes_from_file {
     
 	while(<$in_data_fh>) {
 
-		if(/(\d+)\.(\d+) \[label=\"(\w+)\\n(\w*)\"\]/) {
-
-			# Add the Node name to the alphabet hash 
-            if (defined $4 && $include_label) { 
+        if(/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/) {
+            # Add the Node name to the alphabet hash 
+            if ((defined $4) && ($4 ne "")  && $include_label) { 
                 $node_name = $3 . "_" . $4; 
             } else {
                 $node_name = $3;
             }
             
-			# Add the node id to the node_id_hash;
-			my $node_id = "$1.$2";
-			$node_name_hash->{$node_id} = $node_name;
-		} else {
-			# Done parsing the labels attached to nodes
-			seek($in_data_fh, $last_in_data_fh_pos, 0); # SEEK_SET
-			last;
-		}
-		$last_in_data_fh_pos = tell($in_data_fh);
+            # Add the node id to the node_id_hash;
+            my $node_id = "$1.$2";
+            $node_name_hash->{$node_id} = $node_name;
+        } else {
+            # Done parsing the labels attached to nodes
+            seek($in_data_fh, $last_in_data_fh_pos, 0); # SEEK_SET
+            last;
+        }
+        $last_in_data_fh_pos = tell($in_data_fh);
 	}
 }
 
