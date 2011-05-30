@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.17 2010/04/07 06:35:36 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.18 2010/04/30 07:20:18 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -81,20 +81,27 @@ my $g_mutation_threshold = 50;
 # Get input arguments
 parse_options();
 
+# Create new DOTHelper object
+my $dot_helper = new DotHelper($g_convert_reqs_output_dir);
+
 if (defined $g_snapshot1_files[0]) {
     $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
                                                            \@g_snapshot1_files,
+                                                           $dot_helper,
                                                            $g_convert_reqs_output_dir);
 
     $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
                                           \@g_snapshot1_files,
+                                          $dot_helper,
                                           $g_convert_reqs_output_dir);
 } else {
     $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
+                                                           $dot_helper,
                                                            $g_convert_reqs_output_dir);
 
     $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
                                           \@g_snapshot1_files,
+                                          $dot_helper,
                                           $g_convert_reqs_output_dir);
 }
 
@@ -156,6 +163,7 @@ $g_sed = new Sed("$g_convert_reqs_output_dir/input_vector.dat",
                   $g_bypass_sed);
 
 my $g_print_requests = new PrintRequests($g_convert_reqs_output_dir,
+                                         $dot_helper,
                                          \@g_snapshot0_files,
                                          \@g_snapshot1_files);
 

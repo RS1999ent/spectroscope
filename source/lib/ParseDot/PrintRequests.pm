@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.30 2010/04/06 09:22:03 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.31 2010/04/07 05:35:07 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -14,7 +14,6 @@ use Test::Harness::Assert;
 use diagnostics;
 use Data::Dumper;
 
-use ParseDot::DotHelper qw[parse_nodes_from_string];
 use ParseDot::StructuredGraph;
 
 
@@ -205,15 +204,14 @@ my $_obtain_graph_edge_latencies = sub {
 # @return: A string representation of the graph w/the info overlayed
 ##
 my $_overlay_request_info = sub {
-    assert(scalar(@_) == 3);
+    assert(scalar(@_) == 4);
 
-    my ($self, $request, $overlay_hash_ref) = @_;
+    my ($self, $global_id, $request, $overlay_hash_ref) = @_;
     
     my $summary_node = $overlay_hash_ref->{SUMMARY_NODE};
     my $edge_info_hash = $overlay_hash_ref->{EDGE_STATS};
 
-    my %node_name_hash;
-    DotHelper::parse_nodes_from_string($request, 1, \%node_name_hash);
+    my $node_name_hash = $self->{DOT_HELPER}->parse_nodes_from_string($global_id, $request, 1);
                             
     # Split the graph into lines and insert the summary node after the "Digraph G{"
     my @mod_graph_array = split(/\n/, $request);
@@ -231,8 +229,8 @@ my $_overlay_request_info = sub {
             my $src_node_id = "$1.$2";
             my $dest_node_id = "$3.$4";
             
-            my $src_node_name = $node_name_hash{$src_node_id};
-            my $dest_node_name = $node_name_hash{$dest_node_id};
+            my $src_node_name = $node_name_hash->{$src_node_id};
+            my $dest_node_name = $node_name_hash->{$dest_node_id};
             
             my $edge_name = "$src_node_name->$dest_node_name";
 
@@ -357,16 +355,16 @@ sub create_summary_node {
 ##
 sub new {
 
-    assert(scalar(@_) == 3 || scalar(@_) == 4);
+    assert(scalar(@_) == 4 || scalar(@_) == 5);
 
-    my $proto, my $convert_reqs_dir, my $snapshot0_files_ref, my $snapshot0_index;
+    my $proto, my $convert_reqs_dir, my $dot_helper_obj, my $snapshot0_files_ref, my $snapshot0_index;
     my $snapshot1_files_ref, my $snapshot1_index;
     
-    if(scalar(@_) == 3) {
-        ($proto, $convert_reqs_dir, $snapshot0_files_ref) = @_;
+    if(scalar(@_) == 4) {
+        ($proto, $convert_reqs_dir, $dot_helper_obj, $snapshot0_files_ref) = @_;
         $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
     } else {
-        ($proto, $convert_reqs_dir, $snapshot0_files_ref,
+        ($proto, $convert_reqs_dir, $dot_helper_obj, $snapshot0_files_ref,
          $snapshot1_files_ref) = @_;
         $snapshot0_index = "$convert_reqs_dir/s0_request_index.dat";        
         $snapshot1_index = "$convert_reqs_dir/s1_request_index.dat";
@@ -398,6 +396,8 @@ sub new {
         print "Unable to load input files into hashes\n";
         assert(0);
     }
+
+    $self->{DOT_HELPER} = $dot_helper_obj;
 
     bless($self, $class);
     return $self;
@@ -436,7 +436,7 @@ sub print_global_id_indexed_request {
 
     my $modified_req;
     if (defined $overlay_hash_ref) {
-        $modified_req = $self->$_overlay_request_info($request, $overlay_hash_ref);
+        $modified_req = $self->$_overlay_request_info($global_id, $request, $overlay_hash_ref);
     } else {
         $modified_req = $request;
     }
@@ -665,10 +665,9 @@ sub get_request_edge_latencies_given_global_id {
                                                       $snapshot,
                                                       $filename_idx);
 
-    my %node_name_hash;
-    DotHelper::parse_nodes_from_string($graph, 1, \%node_name_hash);
-    my $edge_latency_hash = $self->$_obtain_graph_edge_latencies($graph, \%node_name_hash);
-
+    my $node_name_hash = $self->{DOT_HELPER}->parse_nodes_from_string( $global_id, 
+                                                                       $graph, 1);
+    my $edge_latency_hash = $self->$_obtain_graph_edge_latencies($graph, $node_name_hash);
     return $edge_latency_hash;
 }
 
@@ -685,8 +684,9 @@ sub get_root_node_given_global_id {
     my ($self, $global_id) = @_;
 
     my $request_string  = $self->get_global_id_indexed_request($global_id);
-    my $structured_graph = StructuredGraph::build_graph_structure($request_string);
-
+    my $structured_graph = StructuredGraph::build_graph_structure($global_id, 
+                                                                  $request_string,
+                                                                  $self->{DOT_HELPER});
     my $root_node_name = $structured_graph->{ROOT}->{NAME};
     return $root_node_name;
 }

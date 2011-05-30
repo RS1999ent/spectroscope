@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.14 2010/03/30 19:49:06 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.14.6.1 2011/05/23 02:46:38 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -123,63 +123,6 @@ my $_print_string_rep_hash = sub {
 
 
 ##
-# This function adds the nodes of a request to two hash tables.
-# First, $self->{ALPHABET_HASH}, which keeps a global mapping
-# from Node Name -> character it is assigned.  Second,
-# the $node_name_hash, which is a per-request hash that keeps
-# a mapping from node id -> node name.
-#
-# @param self: The object-container
-# @param in_data_fh: The filehandle of the file containing
-# requests.  Its offset is set to the start of the nodes.
-# @param node_name_hash: A pointer to the per-request hash 
-# mapping name names to their corresponding alphabet.
-##
-my $_handle_nodes = sub {
-    my $self = shift;
-    
-	my $in_data_fh = shift;
-	my $node_name_hash = shift;
-	my $last_in_data_fh_pos;
-    my $node_name;
-    
-    my $alphabet_hash = $self->{ALPHABET_HASH};
-    
-	$last_in_data_fh_pos = tell($in_data_fh);
-    
-	while(<$in_data_fh>) {
-
-        if(/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/) {
-			# Add the Node label to the alphabet hash 
-            if (!$4 eq '') { 
-                $node_name = $3 . "_" . $4; 
-            } else {
-                $node_name = $3;
-            }
-
-			if(!defined $alphabet_hash->{$node_name}) {
-				$alphabet_hash->{$node_name} = $self->{ALPHABET_COUNTER}++;
-                
-				#if($self->{ALPHABET_COUNTER} >= 126) {
-				#	print "USED LAST POSSIBLE CHARACTER!!!\n";
-				#	assert(0);
-				#}
-			}			
-			# Add the node id to the node_id_hash;
-			my $node_id = "$1.$2";
-			$node_name_hash->{$node_id} = $node_name;
-		} else {
-			# Done parsing the labels attached to nodes
-			seek($in_data_fh, $last_in_data_fh_pos, 0); # SEEK_SET
-			last;
-		}
-		$last_in_data_fh_pos = tell($in_data_fh);
-	}
-    
-};
-
-
-##
 # Given the edge of a request-flow graph, this function appends the
 # source node to the string representation of the request.  The destination
 # node is not added because it will be seen again as a source node.
@@ -293,12 +236,13 @@ my $_handle_requests = sub {
     assert(scalar(@_) == 3);
     my ($self, $files_ref, $dataset) = @_;
     assert($dataset == 0 || $dataset == 1);
+
+    my $dot_helper = $self->{DOT_HELPER};
     
     for(my $i = 0; $i < scalar(@{$files_ref}); $i++) {
         open(my $snapshot_fh, "<@{$files_ref}[$i]");
         
         while(<$snapshot_fh>) {
-            my %node_name_hash;
             
             if(/\# (\d+)  R: ([0-9\.]+)/) {
                 # Great!!!
@@ -311,13 +255,22 @@ my $_handle_requests = sub {
             $_ = <$snapshot_fh>;
             
             # Append to the alphabet
-            $self->$_handle_nodes($snapshot_fh, \%node_name_hash);
-            
+            my $node_name_hash = $dot_helper->parse_nodes_from_file(
+                $self->{GLOBAL_ID}, $snapshot_fh, $1);
+
+            # Translate node names to alphabet
+            while (my ($node_id, $node_name) = each %{$node_name_hash}) {
+                if(!defined $self->{ALPHABET_HASH}->{$node_name}) {
+                    $self->{ALPHABET_HASH}->{$node_name} = $self->{ALPHABET_COUNTER}++;
+                }
+            }
+
             # Print edges names and latencies
-            $self->$_handle_edges($snapshot_fh, \%node_name_hash,
+            $self->$_handle_edges($snapshot_fh, $node_name_hash,
                                   $self->{GLOBAL_ID}, $dataset);
-            
+
             $self->{GLOBAL_ID} = $self->{GLOBAL_ID} + 1;
+            
         }
         
         close($snapshot_fh);
@@ -359,12 +312,13 @@ sub new {
     my $proto;
     my $snapshot0_files_ref;
     my $snapshot1_files_ref;
+    my $dot_helper_obj;
     my $output_dir;
     
-    if (scalar(@_) == 4) {
-        ($proto, $snapshot0_files_ref, $snapshot1_files_ref, $output_dir) = @_;
-    } elsif (scalar(@_) == 3) {
-        ($proto, $snapshot0_files_ref, $output_dir) = @_;
+    if (scalar(@_) == 5) {
+        ($proto, $snapshot0_files_ref, $snapshot1_files_ref, $dot_helper_obj, $output_dir) = @_;
+    } elsif (scalar(@_) == 4) {
+        ($proto, $snapshot0_files_ref, $dot_helper_obj, $output_dir) = @_;
     } else {
         print "Invalid instantiaton of this object!\n";
         assert(0);
@@ -399,6 +353,9 @@ sub new {
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
+
+    # Reference to DotHelper object
+    $self->{DOT_HELPER} = $dot_helper_obj;
     
     bless ($self, $class);
     return $self;

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.8 2010/04/13 05:05:38 ww2 Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.9 2010/04/18 12:33:39 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -100,14 +100,14 @@ sub sort_graph_structure_children {
 ##
 sub build_graph_structure {
     
-    assert(scalar(@_) == 1);
+    assert(scalar(@_) == 3);
 
-    my ($graph) = @_;
+    my ($global_id, $graph, $dot_helper) = @_;
 
     my %graph_node_hash;
     # @note DO NOT include semantic labels when parsing nodes from the string
     # in this case
-    DotHelper::parse_nodes_from_string($graph, 0, \%graph_node_hash);
+    $dot_helper->parse_nodes_from_string($global_id, $graph, 0);
     
     my %graph_structure_hash;
     my %edge_latencies_hash;

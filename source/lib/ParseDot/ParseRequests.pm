@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseRequests.pm,v 1.9 2009/05/19 06:32:28 source Exp $
+# $cmuPDL: ParseRequests.pm,v 1.10 2009/07/23 01:15:58 rajas Exp $
 ##
 # This Perl module generates indices for files containing DOT graphs.  The
 # specific files created and the index mappings are listed below.
@@ -22,9 +22,8 @@
 package ParseRequests;
 
 use strict;
-use warnings;
 use Test::Harness::Assert;
-use ParseDot::DotHelper qw[parse_nodes_from_file];
+use warnings;
 
 
 # Global variables ########################
@@ -145,7 +144,6 @@ my $_handle_requests = sub {
         my $old_byte_offset = 0;
         while(<$snapshot_fh>) {
             my %req_edge_latency_hash;
-            my %node_name_hash;
             my $request_latency;
             my $local_id;
             
@@ -157,15 +155,18 @@ my $_handle_requests = sub {
                 next;
             }
             
-            #generate the snapshot index and global id to local id mapping
+            # Generate the snapshot index and global id to local id mapping
             printf $snapshot_idx_fh "$i $local_id $old_byte_offset\n";
             printf $gid_to_lid_idx_fh "$self->{GLOBAL_ID} $local_id $snapshot $i\n";
             
             # Skip the Begin Digraph { line
             $_ = <$snapshot_fh>;
             
-            DotHelper::parse_nodes_from_file($snapshot_fh, 1, \%node_name_hash);
-            $self->$_handle_edges($snapshot_fh, \%node_name_hash, \%req_edge_latency_hash,
+            my $node_name_hash = 
+                $self->{DOT_HELPER}->parse_nodes_from_file($self->{GLOBAL_ID}, 
+                                                           $snapshot_fh,
+                                                           1);
+            $self->$_handle_edges($snapshot_fh, $node_name_hash, \%req_edge_latency_hash,
                                   $request_latency, $snapshot);
             
             $self->{GLOBAL_ID}++;
@@ -193,14 +194,14 @@ my $_handle_requests = sub {
 ##
 sub new {
     my ($proto, $snapshot0_files_ref, 
-        $snapshot1_files_ref, $output_dir);
+        $snapshot1_files_ref, $dot_helper_obj, $output_dir);
     
-    if (scalar(@_) == 4) {
+    if (scalar(@_) == 5) {
         ($proto, $snapshot0_files_ref, 
-         $snapshot1_files_ref, $output_dir) = @_;
-    } elsif (scalar(@_) == 3) {
+         $snapshot1_files_ref, $dot_helper_obj, $output_dir) = @_;
+    } elsif (scalar(@_) == 4) {
         ($proto, $snapshot0_files_ref, 
-         $output_dir) = @_;
+         $dot_helper_obj, $output_dir) = @_;
     } else {
         print "Invalid number of input arguments\n";
         assert(0);
@@ -230,6 +231,8 @@ sub new {
     } else {
         $self->{S1_REQUEST_INDEX_FILE} = undef;
     }
+
+    $self->{DOT_HELPER} = $dot_helper_obj;
     
     bless($self, $class);
     return $self;
