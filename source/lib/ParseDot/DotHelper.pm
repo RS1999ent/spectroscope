@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: DotHelper.pm,v 1.6.14.2 2011/05/23 02:46:38 rajas Exp $
+# $cmuPDL: DotHelper.pm,v 1.6.14.3 2011/05/30 06:04:49 rajas Exp $
 ##
 # This perl module contains helper functions for use by the other perl
 # modules/scripts in this directory
@@ -76,7 +76,7 @@ sub parse_nodes_from_file {
 	while(<$in_data_fh>) {
 
         # This regular expression match might be slow due to backtracing
-        if(/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/) {
+        if(/(\d+)\.(\d+) \[label=\"(\w+)[\\n]*(\w*)\"\]/) {
             # Add the Node name to the alphabet hash 
             if ((defined $4) && ($4 ne "")  && $include_label) { 
                 $node_name = $3 . "_" . $4; 
@@ -126,7 +126,7 @@ sub parse_nodes_from_string {
 
     # Mapping was not already stored.  Create it.
     my %node_name_hash;
-    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)[\n]*(\w*)\"\]/g) {
+    while ($graph =~ m/(\d+)\.(\d+) \[label=\"(\w+)[\\n]*(\w*)\"\]/g) {
         my $node_name;
         if ((defined $4) && ($4 ne "") && $include_label) {
             $node_name = $3 . "_" . $4;
