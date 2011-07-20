@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.18 2010/04/30 07:20:18 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.18.4.1 2011/05/30 06:04:50 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -70,6 +70,10 @@ my $g_calculate_all_distances = 0;
 # Whether or not 1-unique n relationship should be maintained
 # when calculating string edit distnaces
 my $g_dont_enforce_one_to_n = 0;
+
+# Whether we should simply categorize request flows, instead of also performing
+# request-flow comparison
+my $g_categorize = 0;
 
 #
 # The default structural mutation threshold
@@ -177,12 +181,15 @@ my $g_parse_clustering_results = new ParseClusteringResults($g_convert_reqs_outp
 
 
 
-print "Initializng parse clustering results\n";
-$g_parse_clustering_results->print_ranked_clusters();
-
+print "Initializing parse clustering results\n";
+if ($g_categorize) {
+    $g_parse_clustering_results->print_clusters();
+} else {
+    $g_parse_clustering_results->print_ranked_clusters();
+}
    
 
-### Helper functions #######
+#### Helper functions #######
 #
 # Parses command line options
 #
@@ -193,6 +200,7 @@ sub parse_options {
 			   "snapshot1:s{1,10}"         => \@g_snapshot1_files,
                "mutation_threshold:i"      => \$g_mutation_threshold,
 			   "reconvert_reqs+"           => \$g_reconvert_reqs,
+               "categorize+"               => \$g_categorize,
                "bypass_sed+"               => \$g_bypass_sed,
                "calc_all_edit_dists+"      => \$g_calculate_all_distances,
                "dont_enforce_1_to_n+"      => \$g_dont_enforce_one_to_n);
@@ -202,17 +210,18 @@ sub parse_options {
         print_usage();
         exit(-1);
     }
-
     $g_convert_reqs_output_dir = "$g_output_dir/convert_data";
     system("mkdir -p $g_convert_reqs_output_dir");
 }
+
 
 #
 # Prints usage for this perl script
 #
 sub print_usage {
     print "usage: spectroscope.pl --output_dir, --snapshot0, --snapshot1\n" .
-		"\t--dont_reconvert_reqs --bypass_sed --calc_all_dists\n"; 
+		"\t--reconvert_reqs --categorize --bypass_sed --calc_all_dists\n" .
+        "\t--mutation_threshold --dont_enforce_1_to_n\n";
     print "\n";
     print "\t--output_dir: The directory in which output should be placed\n";
     print "\t--snapshot0: The name(s) of the dot graph output containing requests from\n" .
@@ -221,6 +230,8 @@ sub print_usage {
         "\t the problem snapshot(s).  Up to 10 problem snapshots can be specified. (OPTIONAL)\n";
     print "\t--reconvert_reqs: Re-indexes and reconverts requests for\n" .
         "\t fast access and MATLAB input (OPTIONAL)\n";
+    print "\t--categorize: Only categorizes (clusters) requests.  Do not perform req-flow comp.\n";
+    print "\n\t----------- Following options only valid if comparing request flows ----\n";
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
     print "\t--calc_all_distances: Whether all edit distances should be pre-computed\n" .
         "\t or calculated on demand (OPTIONAL)\n";

@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.31 2010/04/07 05:35:07 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.31.6.1 2011/05/30 06:04:49 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -173,11 +173,11 @@ my $_obtain_graph_edge_latencies = sub {
 
         if(!defined $graph_edge_latencies_hash{$key}) {
             my @arr;
-            $graph_edge_latencies_hash{$key} = \@arr;
+        #    $graph_edge_latencies_hash{$key} = \@arr;
         }
 
-        my $latency_array = $graph_edge_latencies_hash{$key};
-        push(@$latency_array, $edge_latency);
+        #my $latency_array = $graph_edge_latencies_hash{$key};
+        #push(@$latency_array, $edge_latency);
     }
 
     return \%graph_edge_latencies_hash;

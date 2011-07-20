@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.9 2010/04/18 12:33:39 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.9.4.1 2011/05/30 06:04:49 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -104,10 +104,10 @@ sub build_graph_structure {
 
     my ($global_id, $graph, $dot_helper) = @_;
 
-    my %graph_node_hash;
     # @note DO NOT include semantic labels when parsing nodes from the string
     # in this case
-    $dot_helper->parse_nodes_from_string($global_id, $graph, 0);
+    my $graph_node_hash = 
+        $dot_helper->parse_nodes_from_string($global_id, $graph, 0);
     
     my %graph_structure_hash;
     my %edge_latencies_hash;
@@ -128,8 +128,8 @@ sub build_graph_structure {
             assert(!defined $edge_latencies_hash{$src_node_id}{$dest_node_id});
             $edge_latencies_hash{$src_node_id}{$dest_node_id} = $5;
             
-            my $src_node_name = $graph_node_hash{$src_node_id};
-            my $dest_node_name = $graph_node_hash{$dest_node_id};
+            my $src_node_name = $graph_node_hash->{$src_node_id};
+            my $dest_node_name = $graph_node_hash->{$dest_node_id};
             
             if(!defined $graph_structure_hash{$dest_node_id}) {
                 my %dest_node = (NAME => $dest_node_name,
