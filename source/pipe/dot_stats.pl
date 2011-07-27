@@ -150,8 +150,8 @@ while (($key,$value) = each(%graph_stats)) {
 
 print "$0:\tStats:\n";
 printf("$0:\t# of graphs: %d\t\n",$stat->count());
-printf("$0:\tAverage graph size: %d\t\n",$stat->mean());
-printf("$0:\tVariance of graph size: %d\t\n",$stat->variance());
-printf("$0:\tMedian graph size: %d\t\n",$stat->median());
+printf("$0:\tAverage graph size: %f\t\n",$stat->mean());
+printf("$0:\tstddev of graph size: %f\t\n", sqrt($stat->variance()));
+printf("$0:\tMedian graph size: %f\t\n",$stat->median());
 
 print "$0: Finished!\n";
