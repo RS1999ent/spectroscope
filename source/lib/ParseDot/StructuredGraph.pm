@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: StructuredGraph.pm,v 1.9.4.1 2011/05/30 06:04:49 rajas Exp $
+# $cmuPDL: StructuredGraph.pm,v 1.9.4.2 2011/07/20 18:27:54 rajas Exp $
 
 ## 
 # This module can be used to build a structured request-flow graph.  
@@ -29,8 +29,6 @@ use Test::Harness::Assert;
 use ParseDot::DotHelper qw[parse_nodes_from_string];
 use Data::Dumper;
 
-require Exporter;
-our @EXPORT_OK = qw(build_graph_structure);
 
 #### Global Constants #########
 
@@ -49,11 +47,10 @@ no define DEBUG =>;
 # @param graph_structure_hash: A pointer to a hash containing the nodes
 # of a request-flow graph.
 ##
-sub sort_graph_structure_children {
+my $_sort_graph_structure_children = sub {
     
-    assert(scalar(@_) == 1);
-
-    my $graph_structure_hash = shift;
+    assert(scalar(@_) == 2);
+    my ($self, $graph_structure_hash) = @_;
 
     foreach my $key (keys %$graph_structure_hash) {
         my $node = $graph_structure_hash->{$key};
@@ -81,12 +78,12 @@ sub sort_graph_structure_children {
 # printed using a depth-first traversal.  Specifically, the source node
 # of the first edge printed MUST be the root.
 #
-# @todo: This method should not be visible to the external caller.  The new()
-# routine below should be the only function that can call this routine.
-# Unfortunately MatchGraphs.pm and DecisionTree.pm use this function currently;
-# they need to be modified to use the object interface.
-#
-# @param graph: A string representation of the DOT graph
+# @param global_id: The global ID of the request
+# @param graph: A string representation of the requests' DOT graph
+# @param dot_helper: A DotHelper object that perhaps has node IDs->node names
+# cached
+# @param include_node_labels: Whether node labels should be included when
+# creating node names
 #
 # @return: A hash: 
 #    { ROOT => reference to hash containing root node info
@@ -98,16 +95,14 @@ sub sort_graph_structure_children {
 #     PARENTS => ref to array of IDs of parents
 #     ID => This Node's ID
 ##
-sub build_graph_structure {
+my $_build_graph_structure_internal = sub {
     
-    assert(scalar(@_) == 3);
-
-    my ($global_id, $graph, $dot_helper) = @_;
-
+    assert(scalar(@_) == 5);
+    my ($self, $global_id, $graph, $dot_helper, $include_node_labels) = @_;
     # @note DO NOT include semantic labels when parsing nodes from the string
     # in this case
     my $graph_node_hash = 
-        $dot_helper->parse_nodes_from_string($global_id, $graph, 0);
+        $dot_helper->parse_nodes_from_string($global_id, $graph, $include_node_labels);
     
     my %graph_structure_hash;
     my %edge_latencies_hash;
@@ -161,14 +156,12 @@ sub build_graph_structure {
     
     # Finally, sort the children array of each node in the graph structure
     # alphabetically
-    sort_graph_structure_children(\%graph_structure_hash);
+    $self->$_sort_graph_structure_children(\%graph_structure_hash);
 
     return { ROOT => $root_ptr, NODE_HASH => \%graph_structure_hash,
              EDGE_LATENCIES_HASH => \%edge_latencies_hash};
-}
+};
 
-
-#### Private functions ############
 
 ##
 # Creates a new node and returns it
@@ -280,43 +273,52 @@ $_print_dot_edges = sub {
 #  this graph. 
 ##
 sub new {
-    
-    assert(scalar(@_) == 2 || scalar(@_) == 3);
-    
-    my ($proto, $req_str, $id);
-    if (scalar(@_) == 3) {
-        ($proto, $req_str, $id) = @_;
-    } else {
-        ($proto, $id) = @_;
-    }
+    assert(scalar(@_) == 2);
+    my ($proto, $id) = @_;
 
     my $class = ref($proto) || $proto;
     my $self = {};
 
-    if(defined $req_str) {
-        my $container = build_graph_structure($req_str);
-        $self->{GRAPH_STRUCTURE_HASH} = $container->{NODE_HASH};
-        $self->{ROOT} = $container->{ROOT};
-        $self->{EDGE_LATENCIES_HASH} = $container->{EDGE_LATENCIES_HASH};
-        $self->{CURRENT_NODE_ID} = 1;
-        $self->{FINALIZED} = 1;
-        $self->{PREPEND_ID} = $id;
-
-    } else {
-        my %graph_structure_hash;
-        my %edge_latencies_hash;
-        $self->{GRAPH_STRUCTURE_HASH} = \%graph_structure_hash;
-        $self->{EDGE_LATENCIES_HASH} = \%edge_latencies_hash;
-        $self->{ROOT} = undef;
-        $self->{CURRENT_NODE_ID} = 1;
-        $self->{PREPEND_ID} = $id;
-        $self->{FINALIZED} = 0;
-    }
-
+    my %graph_structure_hash;
+    my %edge_latencies_hash;
+    $self->{GRAPH_STRUCTURE_HASH} = \%graph_structure_hash;
+    $self->{EDGE_LATENCIES_HASH} = \%edge_latencies_hash;
+    $self->{ROOT} = undef;
+    $self->{CURRENT_NODE_ID} = 1;
+    $self->{PREPEND_ID} = $id;
+    $self->{FINALIZED} = 0;
     bless($self, $class);
 }
 
 
+# Given a request contained in a string, this function builds the request structure.
+# Ideally, this function would not return the internal representation of the structure.  
+#
+# @param self: The object container
+# @param global_id: The global ID of the request
+# @param req_str: The request in DOT format in a string
+# @dot_helper: A DotHelper object that perhaps has node ids->node names cached
+# @include_node_labels: Whether or not node labels should be included in
+# creating node names
+# 
+# @bug: However, various DecisionTree.pm and MatchGraphs.pm currently use this
+# structure directly.
+##
+sub build_graph_structure {
+    assert(scalar(@_) == 5);
+    my ($self, $global_id, $req_str, $dot_helper, $include_node_labels) = @_;
+
+    my $container = $self->$_build_graph_structure_internal($global_id, $req_str,
+                                                            $dot_helper, $include_node_labels);
+    $self->{GRAPH_STRUCTURE_HASH} = $container->{NODE_HASH};
+    $self->{ROOT} = $container->{ROOT};
+    $self->{EDGE_LATENCIES_HASH} = $container->{EDGE_LATENCIES_HASH};
+    $self->{FINALIZED} = 1;
+
+    return $container;
+}
+
+        
 ##
 # Interface to adding a root node
 #
@@ -414,7 +416,7 @@ sub finalize_graph_structure {
     assert(scalar(@_) == 1);
     my ($self) = @_;
     
-    sort_graph_structure_children($self->{GRAPH_STRUCTURE_HASH});
+    $self->$_sort_graph_structure_children($self->{GRAPH_STRUCTURE_HASH});
     $self->{FINALIZED} = 1;
 }
 

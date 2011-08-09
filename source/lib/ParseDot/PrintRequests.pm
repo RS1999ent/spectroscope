@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: PrintRequests.pm,v 1.31.6.1 2011/05/30 06:04:49 rajas Exp $
+# $cmuPDL: PrintRequests.pm,v 1.31.6.2 2011/07/20 18:27:54 rajas Exp $
 ##
 # This perl modules allows users to quickly extract DOT requests
 # and their associated latencies.
@@ -684,9 +684,11 @@ sub get_root_node_given_global_id {
     my ($self, $global_id) = @_;
 
     my $request_string  = $self->get_global_id_indexed_request($global_id);
-    my $structured_graph = StructuredGraph::build_graph_structure($global_id, 
-                                                                  $request_string,
-                                                                  $self->{DOT_HELPER});
+    my $structured_graph_obj = new StructuredGraph($global_id);
+    my $structured_graph =
+        $structured_graph_obj->StructuredGraph::build_graph_structure($global_id, 
+                                                                      $request_string,
+                                                                      $self->{DOT_HELPER}, 1);
     my $root_node_name = $structured_graph->{ROOT}->{NAME};
     return $root_node_name;
 }

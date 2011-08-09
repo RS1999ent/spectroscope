@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: CreateClusteringInput.pm,v 1.14.6.1 2011/05/23 02:46:38 rajas Exp $
+# $cmuPDL: CreateClusteringInput.pm,v 1.14.6.2 2011/05/30 06:04:50 rajas Exp $
 ##
 # @author Raja Sambasivan
 #
@@ -56,6 +56,7 @@ use Test::Harness::Assert;
 
 use lib '../lib';
 use SedClustering::Sed;
+use ParseDot::StructuredGraph;
 
 # Global variables ########################################
 
@@ -222,6 +223,54 @@ my $_handle_edges = sub {
 
 
 ##
+# Performs a depth-first traversal of the input graph structure object, which
+# has been created so that children are ordered consistently so as to avoid
+# graph isomorphism.  A string representation is extracted during this
+# depth-first traversal.
+#
+# @param self: The object container
+# @param structured_graph: The graph structure object
+##
+my $_perform_depth_first_traversal;
+$_perform_depth_first_traversal = sub {
+    assert(scalar(@_) == 5 || scalar(@_) == 6);
+    my ($self, $structured_graph, $string_rep, $already_traversed,
+        $current_id, $parent_id);
+    if(scalar(@_) == 5) {
+        ($self, $structured_graph, 
+         $string_rep, $already_traversed, $current_id) = @_;
+    } else {
+        ($self, $structured_graph, 
+         $string_rep, $already_traversed, $current_id, $parent_id) = @_;
+    }
+
+    # termination conditon:
+    #   * $current_id not defined
+    #   * Hit the root of a subtree that's already been traversed
+    if(!defined $current_id || defined $already_traversed->{$current_id}) {
+        return;
+    }
+    # Add to already traversed hash
+    $already_traversed->{$current_id} = 1;
+
+    # Add adge parent -> child to the string representation
+    if (defined $parent_id) {
+        my $src_node_name = $structured_graph->get_node_name($parent_id);
+        my $dest_node_name = $structured_graph->get_node_name($current_id);
+        $self->$_get_alphabetized_edge($src_node_name, $dest_node_name, $string_rep);
+    }
+
+    # iterate through children
+    my $children_array = $structured_graph->get_children_ids($current_id);
+    foreach(@{$children_array}) {
+        $self->$_perform_depth_first_traversal($structured_graph, $string_rep,
+                                               $already_traversed, $_, $current_id);
+            
+    }
+};
+ 
+      
+##
 # Iterates through each request seen in the input snapshot
 # and performs the necessary work to convert them to MATLAB
 # compatibile output.  
@@ -256,7 +305,7 @@ my $_handle_requests = sub {
             
             # Append to the alphabet
             my $node_name_hash = $dot_helper->parse_nodes_from_file(
-                $self->{GLOBAL_ID}, $snapshot_fh, $1);
+                $self->{GLOBAL_ID}, $snapshot_fh, 1);
 
             # Translate node names to alphabet
             while (my ($node_id, $node_name) = each %{$node_name_hash}) {
@@ -277,6 +326,54 @@ my $_handle_requests = sub {
     }
 };
 
+
+##
+# This version of _handle_requests() assumes that the input graphs are not
+# well-ordered.  It builds the graph structure and performs a depth-first
+# traversal, where children are ordered alpha-numerically, to create the string
+# representation
+#
+# @param: self: The object-container
+# @param files_ref: Referense to an array of filenames containing
+#  files from the appropriate period
+# @param dataset: The period (0 for non-problem, 1 for problem)
+##
+my $_handle_requests_unstructured = sub {
+    assert(scalar(@_) == 3);
+    my ($self, $files_ref, $dataset) = @_;
+    my $old_seperator = $/;
+    $/ = '}';
+
+    for(my $i = 0; $i < scalar(@{$files_ref}); $i++) {
+        open(my $snapshot_fh, "<@{$files_ref}[$i]");
+    
+        while(<$snapshot_fh>) {
+            if ($_=~ /\# \d+  R: [0-9\.]+/) {
+                my $graph_structure = new StructuredGraph($self->{GLOBAL_ID});
+                $graph_structure->build_graph_structure($self->{GLOBAL_ID}, $_, 
+                                                        $self->{DOT_HELPER}, 1);
+                my $node_name_hash = $self->{DOT_HELPER}->parse_nodes_from_string(
+                    $self->{GLOBAL_ID}, $_, 1);
+                
+                # Translate node names to alphabet
+                while (my ($node_id, $node_name) = each %{$node_name_hash}) {
+                    if(!defined $self->{ALPHABET_HASH}->{$node_name}) {
+                        $self->{ALPHABET_HASH}->{$node_name} = $self->{ALPHABET_COUNTER}++;
+                    }
+                }
+                # Perform depth-first traversal to get ordering
+                my %already_traversed;
+                my $string_rep = '';
+                $self->$_perform_depth_first_traversal($graph_structure, \$string_rep, \%already_traversed, 
+                                                       $graph_structure->get_root_node_id());
+                $self->$_add_to_string_rep_hash($string_rep, $dataset, $self->{GLOBAL_ID});        
+                $self->{GLOBAL_ID} = $self->{GLOBAL_ID} + 1;
+            }
+        }
+        close($snapshot_fh);
+    }
+    $/ = $old_seperator;
+};
 
 ## 
 # Removes the files created by this perl modue, if they already
@@ -313,12 +410,14 @@ sub new {
     my $snapshot0_files_ref;
     my $snapshot1_files_ref;
     my $dot_helper_obj;
+    my $unstructured;
     my $output_dir;
     
-    if (scalar(@_) == 5) {
-        ($proto, $snapshot0_files_ref, $snapshot1_files_ref, $dot_helper_obj, $output_dir) = @_;
-    } elsif (scalar(@_) == 4) {
-        ($proto, $snapshot0_files_ref, $dot_helper_obj, $output_dir) = @_;
+    if (scalar(@_) == 6) {
+        ($proto, $snapshot0_files_ref, $snapshot1_files_ref, $dot_helper_obj,
+         $unstructured, $output_dir) = @_;
+    } elsif (scalar(@_) == 5) {
+        ($proto, $snapshot0_files_ref, $dot_helper_obj, $unstructured, $output_dir) = @_;
     } else {
         print "Invalid instantiaton of this object!\n";
         assert(0);
@@ -353,6 +452,8 @@ sub new {
     # Global IDs.  Global IDs are one-indexed!
     $self->{STARTING_GLOBAL_ID} = 1;
     $self->{GLOBAL_ID} = $self->{STARTING_GLOBAL_ID};
+
+    $self->{UNSTRUCTURED} = $unstructured;
 
     # Reference to DotHelper object
     $self->{DOT_HELPER} = $dot_helper_obj;
@@ -392,9 +493,18 @@ sub create_clustering_input {
 
     $self->$_remove_existing_files();
 
-    $self->$_handle_requests($self->{SNAPSHOT0_FILES_REF}, 0);
-    if (defined $self->{SNAPSHOT1_FILES_REF}) {
-        $self->$_handle_requests($self->{SNAPSHOT1_FILES_REF}, 1);
+    if ($self->{UNSTRUCTURED}) {
+        print "Creating clustering input assuming unstructured graphs\n";
+        $self->$_handle_requests_unstructured($self->{SNAPSHOT0_FILES_REF}, 0);
+        if (defined $self->{SNAPSHOT1_FILES_REF}) {
+            $self->$_handle_requests_unstructured($self->{SNAPSHOT1_FILES_REF}, 1);
+        }
+    } else {
+        print "Creating clustering input assuming structured graphs\n";
+        $self->$_handle_requests($self->{SNAPSHOT0_FILES_REF}, 0);
+        if (defined $self->{SNAPSHOT1_FILES_REF}) {
+            $self->$_handle_requests($self->{SNAPSHOT1_FILES_REF}, 1);
+        }
     }
     
     # Print out files representing the converted data

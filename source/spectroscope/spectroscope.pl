@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# $cmuPDL: spectroscope.pl,v 1.18.4.1 2011/05/30 06:04:50 rajas Exp $
+# $cmuPDL: spectroscope.pl,v 1.18.4.2 2011/07/20 18:27:54 rajas Exp $
 
 ##
 # @author Raja Sambasivan and Alice Zheng
@@ -71,6 +71,9 @@ my $g_calculate_all_distances = 0;
 # when calculating string edit distnaces
 my $g_dont_enforce_one_to_n = 0;
 
+# Whether not edges of input graphs have been ordered consistently
+my $g_unstructured = 0;
+
 # Whether we should simply categorize request flows, instead of also performing
 # request-flow comparison
 my $g_categorize = 0;
@@ -92,6 +95,7 @@ if (defined $g_snapshot1_files[0]) {
     $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
                                                            \@g_snapshot1_files,
                                                            $dot_helper,
+                                                           $g_unstructured,
                                                            $g_convert_reqs_output_dir);
 
     $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
@@ -101,6 +105,7 @@ if (defined $g_snapshot1_files[0]) {
 } else {
     $g_create_clustering_input = new CreateClusteringInput(\@g_snapshot0_files,
                                                            $dot_helper,
+                                                           $g_unstructured,
                                                            $g_convert_reqs_output_dir);
 
     $g_parse_requests = new ParseRequests(\@g_snapshot0_files,
@@ -203,7 +208,8 @@ sub parse_options {
                "categorize+"               => \$g_categorize,
                "bypass_sed+"               => \$g_bypass_sed,
                "calc_all_edit_dists+"      => \$g_calculate_all_distances,
-               "dont_enforce_1_to_n+"      => \$g_dont_enforce_one_to_n);
+               "dont_enforce_1_to_n+"      => \$g_dont_enforce_one_to_n,
+               "unstructured+"             => \$g_unstructured);
 
     # These parameters must be specified by the user
     if (!defined $g_output_dir || !defined $g_snapshot0_files[0]) {
@@ -230,6 +236,7 @@ sub print_usage {
         "\t the problem snapshot(s).  Up to 10 problem snapshots can be specified. (OPTIONAL)\n";
     print "\t--reconvert_reqs: Re-indexes and reconverts requests for\n" .
         "\t fast access and MATLAB input (OPTIONAL)\n";
+    print "-t--unstructured: Assume edges of input graphs have not been ordered consistently\n";
     print "\t--categorize: Only categorizes (clusters) requests.  Do not perform req-flow comp.\n";
     print "\n\t----------- Following options only valid if comparing request flows ----\n";
     print "\t--bypass_sed: Whether to bypass SED calculation (OPTIONAL)\n";
