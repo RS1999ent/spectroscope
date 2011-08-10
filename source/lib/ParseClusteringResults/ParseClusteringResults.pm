@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.38 2010/04/30 07:20:18 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.38.4.1 2011/07/20 18:27:54 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -164,12 +164,20 @@ my $_compute_cluster_info = sub {
         my @cluster_probs;
         $cluster_probs[0] = $self->$_compute_cluster_prob($cluster_freqs[0], $total_requests->[0]);
         $cluster_probs[1] = $self->$_compute_cluster_prob($cluster_freqs[1], $total_requests->[1]);
-        my @avg_response_times;
-        $avg_response_times[0] =
-            ($cluster_freqs[0] == 0)? 0 : sum(@{$response_times->{S0_RESPONSE_TIMES}})/$cluster_freqs[0];
-        $avg_response_times[1] = 
-            ($cluster_freqs[1] == 0)? 0 : sum(@{$response_times->{S1_RESPONSE_TIMES}})/$cluster_freqs[1];
 
+        my $s0_stat = Statistics::Descriptive::Full->new();
+        $s0_stat->add_data($response_times->{S0_RESPONSE_TIMES});
+        my $s1_stat = Statistics::Descriptive::Full->new();
+        $s1_stat->add_data($response_times->{S1_RESPONSE_TIMES});
+        
+        my @avg_response_times;       
+        $avg_response_times[0] = ($cluster_freqs[0] == 0)? 0 : $s0_stat->mean();
+        $avg_response_times[1] = ($cluster_freqs[1] == 0)? 0 : $s1_stat->mean();
+
+        my @stddevs;
+        $stddevs[0] = ($cluster_freqs[0] == 0)? 0 : sqrt($s0_stat->variance());
+        $stddevs[1] = ($cluster_freqs[1] == 0)? 0 : sqrt($s1_stat->variance());
+            
         my %this_cluster_info;
         if ($compare_reqs) {
             my %edge_name_to_row_num_hash;
@@ -190,6 +198,7 @@ my $_compute_cluster_info = sub {
         $this_cluster_info{FREQUENCIES} = \@cluster_freqs;
         $this_cluster_info{LIKELIHOODS} = \@cluster_probs;
         $this_cluster_info{AVG_RESPONSE_TIMES} = \@avg_response_times;           
+        $this_cluster_info{STDDEVS} = \@stddevs;
         $this_cluster_info{ID} = $key;        
         $cluster_info_hash{$key} = \%this_cluster_info;
     }
@@ -572,18 +581,20 @@ my $_print_cluster_info = sub {
     # print the header to the output
     printf $out_fh "%-15s\t%-20s\t%-20s\t%-15s\t%-15s\t%-15s\t%-15s\n",
     "cluster_id", "s0_likelh", "s1_likelh", "s0_avg_lat", 
-    "s1_avg_lat", "s0_freq", "s1_freq";
+    "s1_avg_lat", "s0_stddev", "s1_stddev", "s0_freq", "s1_freq";
 
     for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
         my $this_cluster_hash_ref = $cluster_info_hash_ref->{$key};
 
         my $likelihoods = $this_cluster_hash_ref->{LIKELIHOODS};
         my $avg_response_times = $this_cluster_hash_ref->{AVG_RESPONSE_TIMES};
+        my $stddevs = $this_cluster_hash_ref->{STDDEVS};
         my $freqs = $this_cluster_hash_ref->{FREQUENCIES};
         
-        printf $out_fh "%-15d\t%-1.14f\t%-1.14f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.3f\n",
+        printf $out_fh "%-15d\t%-1.14f\t%-1.14f\t%-12.3f\t%-12.3f\t%-12.3f\t%-12.f\t%-12.3f\t%-12.3f\n",
         $key, $likelihoods->[0], $likelihoods->[1], 
         $avg_response_times->[0], $avg_response_times->[1],
+        $stddevs->[0], $stddevs->[1],
         $freqs->[0], $freqs->[1];
     }
     close($out_fh);
