@@ -160,7 +160,9 @@ sub identify_originators_and_cost {
                 }
 
                 my $fewer_reqs_in_originator = $originator->{FREQUENCIES}->[0] - $originator->{FREQUENCIES}->[1];
-                my $originator_response_time = $originator->{RESPONSE_TIME_STATS}->{AVGS}->[1];
+                # If originator does not contain non-problem period requests, use problem period response time as proxy
+                my $originator_response_time = ($originator->{FREQUENCIES}->[1] != 0)? $originator->{RESPONSE_TIME_STATS}->{AVGS}->[1] : 
+                    $originator->{RESPONSE_TIME_STATS}->{AVGS}->[0];
 
                 # Only compare clusters that are of the same high-level type
                 if($mutation->{ROOT_NODE} ne $originator->{ROOT_NODE}) {
