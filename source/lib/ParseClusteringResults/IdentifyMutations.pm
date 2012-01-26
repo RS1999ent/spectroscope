@@ -515,7 +515,7 @@ sub is_mutation {
         return 1;
     }
 
-    return 1;
+    return 0;
 }
 
 
