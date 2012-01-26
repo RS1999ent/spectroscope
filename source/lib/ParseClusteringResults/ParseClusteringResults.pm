@@ -1,6 +1,6 @@
 #! /usr/bin/perl -w
 
-# $cmuPDL: ParseClusteringResults.pm,v 1.38.4.1 2011/07/20 18:27:54 rajas Exp $
+# $cmuPDL: ParseClusteringResults.pm,v 1.38.4.2 2011/08/10 02:34:47 rajas Exp $
 
 ##
 # This Perl module implements routines for parsing the results
@@ -28,7 +28,7 @@ use ParseClusteringResults::CreateHypothesisTestInputs
     qw[add_latency_comparison get_comparison_results];
 use ParseClusteringResults::IdentifyMutations
     qw[identify_mutations get_mutation_type is_response_time_change is_structural_mutation
-       is_originating_cluster is_mutation];
+       is_originating_cluster is_not_mutation];
 use List::Util qw(sum);
 
 
@@ -412,7 +412,7 @@ my $_print_graphs_of_non_interesting_clusters = sub {
     open(my $output_fh, ">$output_file");
 
     for my $key (sort {$a <=> $b} keys %{$cluster_info_hash_ref}) {
-        if(IdentifyMutations::is_mutation($cluster_info_hash_ref, $key)) {
+        if(IdentifyMutations::is_not_mutation($cluster_info_hash_ref, $key)) {
             $self->$_print_graph($key,
                                  "None",
                                  0,

@@ -17,7 +17,7 @@ use Data::Dumper;
 
 our @EXPORT_OK = qw(identify_mutations get_mutation_type
                     is_response_time_change is_structural_mutation
-                    is_originating_cluster is_mutation
+                    is_originating_cluster is_not_mutation
                     get_originators);
 
 #### Global constants ###########
@@ -160,7 +160,9 @@ sub identify_originators_and_cost {
                 }
 
                 my $fewer_reqs_in_originator = $originator->{FREQUENCIES}->[0] - $originator->{FREQUENCIES}->[1];
-                my $originator_response_time = $originator->{RESPONSE_TIME_STATS}->{AVGS}->[1];
+                # If originator does not contain non-problem period requests, use problem period response time as proxy
+                my $originator_response_time = ($originator->{FREQUENCIES}->[1] != 0)? $originator->{RESPONSE_TIME_STATS}->{AVGS}->[1] : 
+                    $originator->{RESPONSE_TIME_STATS}->{AVGS}->[0];
 
                 # Only compare clusters that are of the same high-level type
                 if($mutation->{ROOT_NODE} ne $originator->{ROOT_NODE}) {
@@ -501,9 +503,9 @@ sub is_originating_cluster {
 # @param cluster_info_hash_ref: Hash ref containing info about each cluster
 # @param cluster_id: The ID of the cluster for which we want info
 #
-# @return 1 if this is some sort of mutation, 0 otherwise
+# @return 1 if this is not some sort of mutation, 0 otherwise
 ##
-sub is_mutation {
+sub is_not_mutation {
     assert(scalar(@_) == 2);
     my ($cluster_info_hash_ref, $cluster_id) = @_;
 
