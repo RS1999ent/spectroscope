@@ -17,7 +17,7 @@ use Data::Dumper;
 
 our @EXPORT_OK = qw(identify_mutations get_mutation_type
                     is_response_time_change is_structural_mutation
-                    is_originating_cluster is_mutation
+                    is_originating_cluster is_not_mutation
                     get_originators);
 
 #### Global constants ###########
@@ -503,9 +503,9 @@ sub is_originating_cluster {
 # @param cluster_info_hash_ref: Hash ref containing info about each cluster
 # @param cluster_id: The ID of the cluster for which we want info
 #
-# @return 1 if this is some sort of mutation, 0 otherwise
+# @return 1 if this is not some sort of mutation, 0 otherwise
 ##
-sub is_mutation {
+sub is_not_mutation {
     assert(scalar(@_) == 2);
     my ($cluster_info_hash_ref, $cluster_id) = @_;
 
