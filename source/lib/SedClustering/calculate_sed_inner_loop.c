@@ -1,4 +1,4 @@
-/* $cmuPDL: calculate_sed_loop.c, v $ */
+/* $cmuPDL: calculate_sed_inner_loop.c,v 1.2 2012/01/24 17:44:34 rajas Exp $ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,9 +29,9 @@ static inline int minimum(int a, int b, int c) {
  * str2: A int * pointer containing elements of the second string
  * str2_length: The # of elements in the second string
  *
- * @return: The normalized string-edit distance between both strings
+ * @return: The string-edit distance between both strings
  */
-double calculate_nsed(int const * const str1, int const str1_length,
+double calculate_sed(int const * const str1, int const str1_length,
                       int const * const str2, int const str2_length) {
 
     /* Take care of base cases */
@@ -39,7 +39,7 @@ double calculate_nsed(int const * const str1, int const str1_length,
         return 0;
     }
     if (str1_length == 0 || str2_length == 0) {
-        return 1;
+        return (str1_length == 0)? str2_length : str1_length;
     }
 
     int *d = malloc((sizeof(int))*(str1_length + 1)*(str2_length + 1));
@@ -112,7 +112,7 @@ int main () {
     int str2_length;
     
     get_input(str1, &str1_length, str2, &str2_length);
-    int sed_value = calculate_nsed(str1, str1_length, str2, str2_length);
+    int sed_value = calculate_sed(str1, str1_length, str2, str2_length);
 
     printf("%d", sed_value);
  }   
