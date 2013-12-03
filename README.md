@@ -1,7 +1,7 @@
 spectroscope
 ============
 
-Spectroscope is an implementation of request-flow comparison.  Request-flow comparison is a technique for diagnosing performance changes in distributed systems.  Please see the NSDI 2011 paper "Diagnosing performance changes by comparing request flows" for more information.
+Spectroscope is an implementation of request-flow comparison, a technique for diagnosing performance changes in distributed systems.  Please see the NSDI 2011 paper "Diagnosing performance changes by comparing request flows" for more information.
 
 Overview of source code
 ============
