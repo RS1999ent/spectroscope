@@ -31,7 +31,7 @@ To run Spectroscope, cd to 'spectroscope/source/spectroscope.' and run spectrosc
 
 --mutation_threshold: Threshold for identifying a cluster as containing mutations or precursors.
 
-Input file format.
+Input file format
 ============
 
 The snapshot0 and snapshot1 files must contain request-flow graphs in DOT format. Each graph must be preceeded with a header that specifies an ID for the graph and its response time (R).  I currently don't remember what the 'RT' parameter in the header specifies.  Here is an example graph from a snapshot file.  The label indicates the node name. Edges must contain a label with a "R: <> us" value, indicating the latency of that edge in the request-flow graph.
