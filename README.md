@@ -36,9 +36,9 @@ Input file format.
 
 The snapshot0 and snapshot1 files must contain request-flow graphs in DOT format. Each graph must be preceeded with a header that specifies an ID for the graph and its response time (R).  I currently don't remember what the 'RT' parameter in the header specifies.  Here is an example graph from a snapshot file.  The label indicates the node name. Edges must contain a label with a "R: <> us" value, indicating the latency of that edge in the request-flow graph.
 
-# 1  R: 4.381460 usecs RT: 0.000000 usecs
+'# 1  R: 4.381460 usecs RT: 0.000000 usecs
 Digraph G {
 2586230574719640.2586230574720450 [label="e10__t3__NFS3_NULL_CALL_TYPE\nDEFAULT"]
 2586230574719640.2586230574733590 [label="e10__t3__NFS3_NULL_REPLY_TYPE\nDEFAULT"]
 2586230574719640.2586230574720450 -> 2586230574719640.2586230574733590 [label="R: 4.381460 us"]
-}
+}'
