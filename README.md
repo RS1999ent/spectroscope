@@ -19,9 +19,9 @@ To run Spectroscope, cd to 'spectroscope/source/spectroscope.' and run spectrosc
 
 --output_dir: The directory in which output should be placed.
 
---snapshot0: The name(s) of the DOT graph file containing requests from the non-problem snapshot(s).  Up to 10 non-problem snapshots can be specified.
+--snapshot0: The name(s) of the DOT graph files containing requests from the non-problem period.  Up to 10 non-problem snapshots can be specified.
 
---snapshot1: The name(s) of the DOT graph file containing requests from the problem snapshot(s).  Up to 10 problem snapshots can be specified. (OPTIONAL).
+--snapshot1: The name(s) of the DOT graph files containing requests from the problem period.  Up to 10 problem snapshots can be specified. (OPTIONAL).
 
 --reconvert_reqs: Re-indexes and reconverts requests.  By default, spectroscope performs indexing and conversion of the input DOT files the first time it is run.  After the first time, it re-uses previous results.  This option forces indexing and conversion. (OPTIONAL).
 	
@@ -30,3 +30,15 @@ To run Spectroscope, cd to 'spectroscope/source/spectroscope.' and run spectrosc
 --calc_all_distances: Whether all edit distances should be pre-computed or calculated on demand.  By default, String-edit distance is calculated only for cluters (categories) that can be precursor/mutation pairs.  This option forces string-edit distance to be calculated for all clusters (categories).  (OPTIONAL).
 
 --mutation_threshold: Threshold for identifying a cluster as containing mutations or precursors.
+
+Input file format.
+============
+
+The snapshot0 and snapshot1 files must contain request-flow graphs in DOT format. Each graph must be preceeded with a header that specifies an ID for the graph and its response time (R).  I currently don't remember what the 'RT' parameter in the header specifies.  Here is an example graph from a snapshot file.  The label indicates the node name. Edges must contain a label with a "R: <> us" value, indicating the latency of that edge in the request-flow graph.
+
+# 1  R: 4.381460 usecs RT: 0.000000 usecs
+Digraph G {
+2586230574719640.2586230574720450 [label="e10__t3__NFS3_NULL_CALL_TYPE\nDEFAULT"]
+2586230574719640.2586230574733590 [label="e10__t3__NFS3_NULL_REPLY_TYPE\nDEFAULT"]
+2586230574719640.2586230574720450 -> 2586230574719640.2586230574733590 [label="R: 4.381460 us"]
+}
