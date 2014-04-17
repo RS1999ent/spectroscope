@@ -49,7 +49,6 @@ package ParseClusteringResults;
 use strict;
 use Cwd;
 use Test::Harness::Assert;
-use GD::Graph::boxplot;
 use Statistics::Descriptive;
 use diagnostics;
 use Data::Dumper;

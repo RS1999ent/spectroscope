@@ -5,7 +5,12 @@ Spectroscope is an implementation of request-flow comparison, a technique for di
 
 Overview of source code
 ============
-Spectroscope is written as several perl modules that interface with each other and Matlab.  Running Spectroscope requires several perl modules (see the various source files) and Matlab.  
+Spectroscope is written as several perl modules that interface with each other and Matlab.  Running Spectroscope requires several perl modules, listed below, and Matlab.  
+
+Required Perl packages:
+Test::Harness::Straps
+define
+Statistics::Descriptive
 
 Naming conventions
 ============
