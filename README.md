@@ -133,5 +133,5 @@ precursors based on structural similarity.
 originating_clusters.dot: This file contains all precursor categories
 of the strucural-mutations categories identified by Spectroscope.
 
-results.txt: A list of cateories identified by Spectroscope as
+cluster_info.dat: A list of cateories identified by Spectroscope as
 containing mutations in table format.
